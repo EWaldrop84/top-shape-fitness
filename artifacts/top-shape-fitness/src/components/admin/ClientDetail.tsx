@@ -331,7 +331,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         .select(`
           id, notes, waiver_signed, waiver_date, created_by, user_id,
           users!user_id ( id, email, first_name, last_name, phone, is_active, created_at, role ),
-          client_packages (
+          client_packages!client_packages_owner_client_id_fkey (
             id, package_id, owner_client_id, sessions_total, sessions_remaining, sessions_used,
             purchase_date, expiration_date, expiration_waived, is_active, is_shared, shared_with_client_id,
             packages!package_id ( id, name, session_count, duration_days, is_active )
