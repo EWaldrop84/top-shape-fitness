@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Top Shape Fitness"
+version = "1.0.0"
+id = "artifacts/top-shape-fitness"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18749
+
+[services.development]
+run = "pnpm --filter @workspace/top-shape-fitness run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/top-shape-fitness", "run", "build" ]
+publicDir = "artifacts/top-shape-fitness/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18749"
+BASE_PATH = "/"
