@@ -1,0 +1,111 @@
+import { supabase } from "@/lib/supabase";
+import type { AppUser } from "@/types";
+
+interface TrainerPortalProps {
+  user: AppUser;
+  onLogout: () => void;
+}
+
+function PortalCard({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) {
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+      <div className="w-11 h-11 rounded-xl bg-[#1F73B1]/10 flex items-center justify-center mb-4">
+        {icon}
+      </div>
+      <h3 className="font-semibold text-[#2A255D] text-sm">{title}</h3>
+      <p className="text-xs text-gray-400 mt-1 leading-relaxed">{description}</p>
+      <div className="mt-4 flex items-center gap-1.5">
+        <div className="flex-1 h-1 rounded-full bg-gray-100" />
+        <span className="text-[11px] text-gray-300">Coming soon</span>
+      </div>
+    </div>
+  );
+}
+
+export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    onLogout();
+  }
+
+  const firstName = user.first_name ?? user.email.split("@")[0];
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Top bar */}
+      <header className="bg-[#2A255D] text-white px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[#1F73B1] flex items-center justify-center flex-shrink-0">
+            <svg className="w-4.5 h-4.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="9" width="14" height="6" rx="1" />
+              <path d="M3 9.5h2M19 9.5h2M3 14.5h2M19 14.5h2M6.5 6.5h11M6.5 17.5h11" />
+            </svg>
+          </div>
+          <div>
+            <div className="text-xs font-bold tracking-wider text-white/90 uppercase leading-tight">Trainer Portal</div>
+            <div className="text-[10px] text-white/40 leading-tight">Top Shape Fitness</div>
+          </div>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white/70 border border-white/20 hover:bg-white/10 transition"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Log Out
+        </button>
+      </header>
+
+      <main className="px-4 py-5 max-w-lg mx-auto">
+        <div className="mb-5">
+          <h1 className="text-lg font-bold text-[#2A255D]">Welcome, {firstName}</h1>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#1F73B1] inline-block" />
+            <p className="text-xs text-gray-400">Trainer Access</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <PortalCard
+            title="My Schedule"
+            description="View your upcoming sessions, availability, and appointment calendar."
+            icon={
+              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+                <path d="M8 14h.01M12 14h.01M16 14h.01" />
+              </svg>
+            }
+          />
+          <PortalCard
+            title="All Clients"
+            description="Browse your client roster, view profiles, notes, and session history."
+            icon={
+              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                <path d="M16 3.13a4 4 0 010 7.75" />
+              </svg>
+            }
+          />
+          <PortalCard
+            title="My Payroll Hours"
+            description="Track your logged session hours and pay period totals."
+            icon={
+              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            }
+          />
+        </div>
+      </main>
+    </div>
+  );
+}

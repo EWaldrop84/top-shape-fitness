@@ -1,6 +1,6 @@
-# [Project name]
+# Top Shape Fitness
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile-first Progressive Web App (PWA) for a private personal training studio. Manages clients, trainers, session packages, appointments, scheduling, payroll, and SMS notifications.
 
 ## Run & Operate
 
@@ -14,23 +14,38 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React + Vite, Tailwind CSS, `@supabase/supabase-js`, `vite-plugin-pwa`
+- Auth & DB: Supabase (email+password auth, PostgreSQL)
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
+- DB (internal): PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/top-shape-fitness/` — React PWA frontend
+- `artifacts/top-shape-fitness/src/lib/supabase.ts` — Supabase client (uses `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`)
+- `artifacts/top-shape-fitness/src/App.tsx` — Root auth router (loading → login → role dashboard)
+- `artifacts/top-shape-fitness/src/pages/` — Login, AdminDashboard, TrainerPortal, ClientPortal
+- `artifacts/top-shape-fitness/src/types/index.ts` — Shared TypeScript types (AppUser, UserRole)
+- `supabase/migrations/001_initial_schema.sql` — Full DB schema (run in Supabase SQL Editor)
+- `artifacts/api-server/` — Express backend (Phase 2+)
+- `lib/api-spec/openapi.yaml` — OpenAPI contract (Phase 2+)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Supabase auth session is persisted via `localStorage` (storageKey: `top-shape-fitness-auth`). `onAuthStateChange` keeps the session live across tabs and refreshes.
+- After login, the app queries `public.users` by `auth.uid()` to get the role. Login fails gracefully if the user row doesn't exist or `is_active = false`.
+- Role routing is handled entirely in `App.tsx` — no client-side router needed for Phase 1.
+- PWA manifest and service worker wired via `vite-plugin-pwa` (disabled in dev, active in production build).
+- Brand colors: Navy `#2A255D`, Teal `#06A29E`, Blue `#1F73B1` — mapped to CSS custom properties in `src/index.css`.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Admin**: Full studio management — schedules, clients, payroll, revenue
+- **Trainer**: Personal schedule, client roster, payroll hours
+- **Client**: Session history, appointment booking, package balance
 
 ## User preferences
 
@@ -38,7 +53,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- **SQL migration**: Run `supabase/migrations/001_initial_schema.sql` in the Supabase SQL Editor before any logins will work. Users in `auth.users` must also have a matching row in `public.users` with the same `id` UUID.
+- **VITE_ prefix**: Supabase URL/key are stored as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` so Vite exposes them to the browser bundle.
+- **Always run X before Y**: Run codegen after any OpenAPI spec change before touching frontend code.
 
 ## Pointers
 
