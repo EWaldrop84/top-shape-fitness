@@ -116,8 +116,8 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
               </svg>
             </div>
             <div>
-              <div className="text-xs font-bold tracking-wider text-white/90 uppercase leading-tight">Top Shape</div>
-              <div className="text-[10px] text-white/40 leading-tight">Fitness Studio</div>
+              <div className="text-xs font-bold tracking-wider text-white/90 uppercase leading-tight">Shape Studio</div>
+              <div className="text-[10px] text-white/40 leading-tight">Personal Training</div>
             </div>
           </div>
         </div>
@@ -174,7 +174,7 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                     <path d="M3 9.5h2M19 9.5h2M3 14.5h2M19 14.5h2M6.5 6.5h11M6.5 17.5h11" />
                   </svg>
                 </div>
-                <span className="text-sm font-bold text-white/90">Top Shape</span>
+                <span className="text-sm font-bold text-white/90">Shape Studio</span>
               </div>
               <button onClick={() => setMobileNavOpen(false)} className="p-1 text-white/50 hover:text-white">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

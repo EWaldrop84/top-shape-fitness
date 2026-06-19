@@ -1,3 +1,6 @@
 - [Deduction & cancellation rules](deduction-cancellation.md) — immediate deduct if booking within 24hrs; 3-case cancel logic
 - [SMS module](sms-module.md) — sms.ts in api-server; all 8 triggers; logs to sms_log regardless of success
 - [Payroll sync pattern](payroll-sync.md) — payroll_sessions may be empty; POST /api/admin/sync-payroll generates from completed appointments
+- [Pricing migration](pricing-migration.md) — packages.price_cents and trainers.hourly_rate_cents added in migration 004; run in Supabase SQL Editor before revenue metrics show real dollar values.
+- [Revenue metrics pattern](revenue-metrics.md) — gross/delivered/liability/labor computed client-side from one client_packages query (all rows, not filtered to is_active); no aggregate endpoint needed.
+- [App branding](app-branding.md) — official name is "Shape Studio" everywhere; never revert to "Top Shape Fitness" or "Top Shape" in UI strings.

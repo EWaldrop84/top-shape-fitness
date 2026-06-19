@@ -37,9 +37,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       base: basePath,
       manifest: {
-        name: "Top Shape Fitness",
-        short_name: "Top Shape",
-        description: "Private personal training studio management app",
+        name: "Shape Studio",
+        short_name: "Shape Studio",
+        description: "Shape Studio — Private personal training studio management app",
         start_url: basePath,
         display: "standalone",
         background_color: "#2A255D",

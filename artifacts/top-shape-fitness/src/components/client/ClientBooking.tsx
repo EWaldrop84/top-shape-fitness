@@ -180,7 +180,7 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
         </div>
         <h3 className="font-bold text-[#2A255D] text-base mb-2">No Sessions Remaining</h3>
         <p className="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">
-          Please contact Top Shape Fitness to renew your package before booking a new session.
+          Please contact Shape Studio to renew your package before booking a new session.
         </p>
       </div>
     );

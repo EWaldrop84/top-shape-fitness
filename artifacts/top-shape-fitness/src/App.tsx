@@ -5,6 +5,7 @@ import Login from "@/pages/Login";
 import AdminDashboard from "@/pages/AdminDashboard";
 import TrainerPortal from "@/pages/TrainerPortal";
 import ClientPortal from "@/pages/ClientPortal";
+import InstallPrompt from "@/components/InstallPrompt";
 
 type AuthState = "loading" | "unauthenticated" | "authenticated";
 
@@ -95,11 +96,11 @@ export default function App() {
 
   switch (currentUser.role) {
     case "admin":
-      return <AdminDashboard user={currentUser} onLogout={handleLogout} />;
+      return <><AdminDashboard user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
     case "trainer":
-      return <TrainerPortal user={currentUser} onLogout={handleLogout} />;
+      return <><TrainerPortal user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
     case "client":
-      return <ClientPortal user={currentUser} onLogout={handleLogout} />;
+      return <><ClientPortal user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
     default:
       return (
         <div className="min-h-screen bg-[#2A255D] flex items-center justify-center px-4">
