@@ -1,49 +1,131 @@
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import type { AppUser } from "@/types";
+import type { AppUser, Trainer } from "@/types";
+import TrainerSchedule from "@/components/trainer/TrainerSchedule";
+import TrainerClients from "@/components/trainer/TrainerClients";
+import TrainerPayroll from "@/components/trainer/TrainerPayroll";
+
+type Tab = "schedule" | "clients" | "payroll";
 
 interface TrainerPortalProps {
   user: AppUser;
   onLogout: () => void;
 }
 
-function PortalCard({ title, icon, description }: { title: string; icon: React.ReactNode; description: string }) {
-  return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="w-11 h-11 rounded-xl bg-[#1F73B1]/10 flex items-center justify-center mb-4">
-        {icon}
-      </div>
-      <h3 className="font-semibold text-[#2A255D] text-sm">{title}</h3>
-      <p className="text-xs text-gray-400 mt-1 leading-relaxed">{description}</p>
-      <div className="mt-4 flex items-center gap-1.5">
-        <div className="flex-1 h-1 rounded-full bg-gray-100" />
-        <span className="text-[11px] text-gray-300">Coming soon</span>
-      </div>
-    </div>
-  );
-}
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "schedule",
+    label: "Schedule",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
+      </svg>
+    ),
+  },
+  {
+    id: "clients",
+    label: "Clients",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87" />
+        <path d="M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
+  },
+  {
+    id: "payroll",
+    label: "Payroll",
+    icon: (
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+  },
+];
 
 export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
+  const [trainer, setTrainer] = useState<Trainer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Tab>("schedule");
+
+  const firstName = user.first_name ?? user.email.split("@")[0];
+
+  useEffect(() => {
+    supabase
+      .from("trainers")
+      .select("id, user_id, display_color, bio, is_active")
+      .eq("user_id", user.id)
+      .single()
+      .then(({ data }) => {
+        setTrainer((data as Trainer) ?? null);
+        setLoading(false);
+      });
+  }, [user.id]);
+
   async function handleLogout() {
     await supabase.auth.signOut();
     onLogout();
   }
 
-  const firstName = user.first_name ?? user.email.split("@")[0];
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <svg className="animate-spin w-8 h-8 text-[#06A29E]" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      </div>
+    );
+  }
 
+  // ── No trainer profile ────────────────────────────────────────────────────
+  if (!trainer) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-4">
+          <svg className="w-7 h-7 text-orange-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <h2 className="text-base font-bold text-[#2A255D] mb-2">Trainer profile not found</h2>
+        <p className="text-sm text-gray-400 mb-6 max-w-xs">
+          Your account doesn't have a trainer profile yet. Please ask your administrator to set one up.
+        </p>
+        <button
+          onClick={handleLogout}
+          className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition"
+        >
+          Log Out
+        </button>
+      </div>
+    );
+  }
+
+  // ── Main portal ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
-      <header className="bg-[#2A255D] text-white px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <header className="bg-[#2A255D] text-white px-4 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#1F73B1] flex items-center justify-center flex-shrink-0">
-            <svg className="w-4.5 h-4.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="9" width="14" height="6" rx="1" />
-              <path d="M3 9.5h2M19 9.5h2M3 14.5h2M19 14.5h2M6.5 6.5h11M6.5 17.5h11" />
-            </svg>
+          <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-bold text-white">
+              {firstName[0].toUpperCase()}
+            </span>
           </div>
           <div>
-            <div className="text-xs font-bold tracking-wider text-white/90 uppercase leading-tight">Trainer Portal</div>
-            <div className="text-[10px] text-white/40 leading-tight">Top Shape Fitness</div>
+            <p className="text-sm font-bold text-white leading-tight">{firstName}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#06A29E]" />
+              <p className="text-[11px] text-white/50 leading-tight">Trainer Access</p>
+            </div>
           </div>
         </div>
         <button
@@ -59,53 +141,30 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
         </button>
       </header>
 
-      <main className="px-4 py-5 max-w-lg mx-auto">
-        <div className="mb-5">
-          <h1 className="text-lg font-bold text-[#2A255D]">Welcome, {firstName}</h1>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#1F73B1] inline-block" />
-            <p className="text-xs text-gray-400">Trainer Access</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4">
-          <PortalCard
-            title="My Schedule"
-            description="View your upcoming sessions, availability, and appointment calendar."
-            icon={
-              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-                <path d="M8 14h.01M12 14h.01M16 14h.01" />
-              </svg>
-            }
-          />
-          <PortalCard
-            title="All Clients"
-            description="Browse your client roster, view profiles, notes, and session history."
-            icon={
-              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 00-3-3.87" />
-                <path d="M16 3.13a4 4 0 010 7.75" />
-              </svg>
-            }
-          />
-          <PortalCard
-            title="My Payroll Hours"
-            description="Track your logged session hours and pay period totals."
-            icon={
-              <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            }
-          />
-        </div>
+      {/* Tab content — scrollable area above bottom nav */}
+      <main className="flex-1 overflow-auto pb-20">
+        {tab === "schedule" && <TrainerSchedule trainerId={trainer.id} />}
+        {tab === "clients"  && <TrainerClients  trainerId={trainer.id} />}
+        {tab === "payroll"  && <TrainerPayroll  trainerId={trainer.id} />}
       </main>
+
+      {/* Bottom tab bar */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-[0_-1px_8px_rgba(0,0,0,0.06)] flex z-40">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 flex flex-col items-center gap-1 py-3 transition ${active ? "text-[#2A255D]" : "text-gray-400 hover:text-gray-600"}`}
+            >
+              <span className={active ? "text-[#2A255D]" : "text-gray-400"}>{t.icon}</span>
+              <span className={`text-[11px] font-semibold leading-none ${active ? "text-[#2A255D]" : "text-gray-400"}`}>{t.label}</span>
+              {active && <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-[#06A29E]" />}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

@@ -61,3 +61,48 @@ export interface Appointment {
     };
   };
 }
+
+export interface Trainer {
+  id: string;
+  user_id: string;
+  display_color: string | null;
+  bio: string | null;
+  is_active: boolean;
+}
+
+export interface TrainerAppointment {
+  id: string;
+  client_id: string;
+  appointment_date: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  status: "scheduled" | "completed" | "cancelled" | "no_show" | "forfeited";
+  notes: string | null;
+  clientName?: string;
+}
+
+export interface PayrollSession {
+  id: string;
+  appointment_id: string;
+  trainer_id: string;
+  session_date: string;
+  duration_minutes: number;
+  hours: number;
+  pay_period_start: string;
+  pay_period_end: string;
+  color_code: "tomato" | "charcoal" | null;
+  notes: string | null;
+  clientName?: string;
+}
+
+export interface AvailabilityBlock {
+  id: string;
+  trainer_id: string;
+  day_of_week: "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
+  start_time: string;
+  end_time: string;
+  is_recurring: boolean;
+  specific_date: string | null;
+  is_active: boolean;
+}
