@@ -48,7 +48,7 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
       .from("clients")
       .select(`
         id, notes, waiver_signed, waiver_date, created_by,
-        users!user_id ( id, email, first_name, last_name, phone, is_active, created_at, role ),
+        users!clients_user_id_fkey ( id, email, first_name, last_name, phone, is_active, created_at, role ),
         client_packages!client_packages_owner_client_id_fkey (
           id, sessions_remaining, sessions_total, sessions_used,
           purchase_date, expiration_date, is_active, expiration_waived,
