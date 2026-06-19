@@ -1,4 +1,4 @@
-const TWILIO_FROM = "+18434102198";
+const TWILIO_FROM = process.env.TWILIO_FROM_NUMBER ?? "+18434102198";
 
 function svcHdrs(key: string) {
   return { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
