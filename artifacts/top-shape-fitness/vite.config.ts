@@ -42,8 +42,8 @@ export default defineConfig({
         description: "Shape Studio — Private personal training studio management app",
         start_url: basePath,
         display: "standalone",
-        background_color: "#2A255D",
-        theme_color: "#2A255D",
+        background_color: "#000000",
+        theme_color: "#000000",
         orientation: "portrait-primary",
         icons: [
           {
