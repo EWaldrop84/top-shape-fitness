@@ -110,37 +110,40 @@ export default function AdminCalendar() {
     setLoading(true);
     const weekEnd = addDays(weekStart, 6);
 
-    const [trainersRes, apptRes, clientsRes, usersRes] = await Promise.all([
-      supabase.from("trainers").select("id, user_id, display_color, bio, is_active").eq("is_active", true),
+    const [trainersRes, apptRes, clientsRes] = await Promise.all([
+      supabase
+        .from("trainers")
+        .select("id, display_color, users!trainers_user_id_fkey(first_name, last_name, email)")
+        .eq("is_active", true),
       supabase
         .from("appointments")
         .select("id, client_id, trainer_id, client_package_id, appointment_date, start_time, end_time, duration_minutes, status, session_deducted, cancellation_within_24hr, forfeiture_waived, cancelled_at, notes")
         .gte("appointment_date", isoDate(weekStart))
         .lte("appointment_date", isoDate(weekEnd)),
-      supabase.from("clients").select("id, user_id"),
-      supabase.from("users").select("id, first_name, last_name, email, role"),
+      supabase
+        .from("clients")
+        .select("id, users!clients_user_id_fkey(first_name, last_name, email)"),
     ]);
 
-    const userMap = new Map((usersRes.data ?? []).map((u: any) => [u.id, u]));
-
     const trainerRows: TrainerRow[] = (trainersRes.data ?? []).map((t: any) => {
-      const u = userMap.get(t.user_id) as any;
-      return { trainer: t as Trainer, firstName: u?.first_name ?? "Trainer", lastName: u?.last_name ?? null };
+      const u = t.users ?? {};
+      return { trainer: { id: t.id, display_color: t.display_color } as Trainer, firstName: u.first_name ?? "Trainer", lastName: u.last_name ?? null };
     });
     setTrainers(trainerRows);
 
     // Client name map for appointment display
     const clientUserMap = new Map<string, string>();
     for (const c of (clientsRes.data ?? []) as any[]) {
-      const u = userMap.get(c.user_id) as any;
-      if (u) clientUserMap.set(c.id, [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email);
+      const u = c.users ?? {};
+      const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "Unknown";
+      clientUserMap.set(c.id, name);
     }
     setClientNameMap(clientUserMap);
 
-    // All clients for create modal
+    // All clients for create modal — sorted by name
     const clients: ClientOption[] = (clientsRes.data ?? []).map((c: any) => {
-      const u = userMap.get(c.user_id) as any;
-      return { id: c.id, name: u ? [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email : "Unknown" };
+      const u = c.users ?? {};
+      return { id: c.id, name: [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "Unknown" };
     }).sort((a, b) => a.name.localeCompare(b.name));
     setAllClients(clients);
 
