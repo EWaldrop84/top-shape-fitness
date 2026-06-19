@@ -8,6 +8,7 @@ interface ClientListProps {
 }
 
 function fullName(u: ClientWithRelations["users"]) {
+  if (!u) return "(no profile)";
   return [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email;
 }
 
@@ -65,10 +66,12 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
   }
 
   const filtered = clients.filter((c) => {
+    if (!search) return true;
     const q = search.toLowerCase();
     const name = fullName(c.users).toLowerCase();
-    const email = c.users.email.toLowerCase();
-    return name.includes(q) || email.includes(q);
+    const email = (c.users?.email ?? "").toLowerCase();
+    const phone = (c.users?.phone ?? "").toLowerCase();
+    return name.includes(q) || email.includes(q) || phone.includes(q);
   });
 
   return (
@@ -99,7 +102,7 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
         </svg>
         <input
           type="search"
-          placeholder="Search by name or email…"
+          placeholder="Search by name, email or phone…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition"
@@ -151,6 +154,7 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
                 <tr className="border-b border-gray-100 bg-gray-50/60">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Active Package</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sessions Left</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
@@ -160,14 +164,18 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map((client) => {
+                  const u = client.users;
                   const activePkg = client.client_packages?.find((p) => p.is_active);
                   return (
                     <tr key={client.id} className="hover:bg-gray-50/50 transition">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-[#2A255D]">{fullName(client.users)}</p>
-                        <p className="text-xs text-gray-400">{client.users.email}</p>
+                        <p className="font-medium text-[#2A255D]">{fullName(u)}</p>
+                        <p className="text-xs text-gray-400">{u?.email ?? "—"}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{client.users.phone ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-600">{u?.phone ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-medium text-gray-500 capitalize">{u?.role ?? "—"}</span>
+                      </td>
                       <td className="px-4 py-3 text-gray-600">
                         {activePkg?.packages?.name ?? <span className="text-gray-300">—</span>}
                       </td>
@@ -187,7 +195,7 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
                           formatDate(activePkg?.expiration_date)
                         )}
                       </td>
-                      <td className="px-4 py-3">{statusBadge(client.users.is_active)}</td>
+                      <td className="px-4 py-3">{statusBadge(u?.is_active ?? false)}</td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => onView(client.id)}
@@ -206,18 +214,22 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {filtered.map((client) => {
+              const u = client.users;
               const activePkg = client.client_packages?.find((p) => p.is_active);
               return (
                 <div key={client.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
-                      <p className="font-semibold text-[#2A255D]">{fullName(client.users)}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{client.users.email}</p>
-                      {client.users.phone && (
-                        <p className="text-xs text-gray-500 mt-0.5">{client.users.phone}</p>
+                      <p className="font-semibold text-[#2A255D]">{fullName(u)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{u?.email ?? "—"}</p>
+                      {u?.phone && (
+                        <p className="text-xs text-gray-500 mt-0.5">{u.phone}</p>
+                      )}
+                      {u?.role && (
+                        <p className="text-xs text-gray-400 mt-0.5 capitalize">{u.role}</p>
                       )}
                     </div>
-                    {statusBadge(client.users.is_active)}
+                    {statusBadge(u?.is_active ?? false)}
                   </div>
                   <div className="flex items-center justify-between">
                     <div>

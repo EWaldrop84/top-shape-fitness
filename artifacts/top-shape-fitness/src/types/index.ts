@@ -42,7 +42,7 @@ export interface ClientWithRelations {
   waiver_signed: boolean;
   waiver_date: string | null;
   created_by: string | null;
-  users: AppUser;
+  users: AppUser | null;
   client_packages?: ClientPackage[];
 }
 

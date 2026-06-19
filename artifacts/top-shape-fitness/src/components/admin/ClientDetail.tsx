@@ -356,9 +356,9 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
       const c = clientData as unknown as ClientWithRelations;
       setClient(c);
       setEditForm({
-        first_name: c.users.first_name ?? "",
-        last_name: c.users.last_name ?? "",
-        phone: c.users.phone ?? "",
+        first_name: c.users?.first_name ?? "",
+        last_name: c.users?.last_name ?? "",
+        phone: c.users?.phone ?? "",
         notes: c.notes ?? "",
       });
     }
@@ -378,7 +378,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         first_name: editForm.first_name || null,
         last_name: editForm.last_name || null,
         phone: editForm.phone || null,
-      }).eq("id", client.users.id),
+      }).eq("id", client.users?.id ?? client.user_id),
       supabase.from("clients").update({ notes: editForm.notes || null }).eq("id", clientId),
     ]);
     if (userErr || clientErr) {
@@ -421,7 +421,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
   }
 
   const sortedPkgs = [...(client.client_packages ?? [])].sort((a, b) => Number(b.is_active) - Number(a.is_active));
-  const fullName = [client.users.first_name, client.users.last_name].filter(Boolean).join(" ") || client.users.email;
+  const fullName = [client.users?.first_name, client.users?.last_name].filter(Boolean).join(" ") || client.users?.email || "(no profile)";
 
   return (
     <div className="p-4 md:p-6 max-w-2xl space-y-5">
@@ -432,7 +432,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         </button>
         <div>
           <h2 className="text-base font-bold text-[#2A255D]">{fullName}</h2>
-          <p className="text-xs text-gray-400">Joined {formatDate(client.users.created_at)}</p>
+          <p className="text-xs text-gray-400">Joined {formatDate(client.users?.created_at)}</p>
         </div>
       </div>
 
@@ -450,7 +450,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
               <button onClick={handleSaveEdit} disabled={saving} className="px-3 py-1.5 rounded-lg bg-[#06A29E] text-white text-xs font-semibold hover:bg-[#048e8a] transition disabled:opacity-60">
                 {saving ? "Saving…" : "Save"}
               </button>
-              <button onClick={() => { setIsEditing(false); setEditForm({ first_name: client.users.first_name ?? "", last_name: client.users.last_name ?? "", phone: client.users.phone ?? "", notes: client.notes ?? "" }); }} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
+              <button onClick={() => { setIsEditing(false); setEditForm({ first_name: client.users?.first_name ?? "", last_name: client.users?.last_name ?? "", phone: client.users?.phone ?? "", notes: client.notes ?? "" }); }} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition">
                 Cancel
               </button>
             </div>
@@ -488,11 +488,11 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-y-3 gap-x-6 text-sm">
-            <div><p className="text-xs text-gray-400 mb-0.5">Email</p><p className="text-[#2A255D] font-medium break-all">{client.users.email}</p></div>
-            <div><p className="text-xs text-gray-400 mb-0.5">Phone</p><p className="text-[#2A255D] font-medium">{client.users.phone ?? "—"}</p></div>
+            <div><p className="text-xs text-gray-400 mb-0.5">Email</p><p className="text-[#2A255D] font-medium break-all">{client.users?.email ?? "—"}</p></div>
+            <div><p className="text-xs text-gray-400 mb-0.5">Phone</p><p className="text-[#2A255D] font-medium">{client.users?.phone ?? "—"}</p></div>
             <div className="col-span-2"><p className="text-xs text-gray-400 mb-0.5">Notes</p><p className="text-gray-700">{client.notes || <span className="text-gray-300 italic">None</span>}</p></div>
             <div><p className="text-xs text-gray-400 mb-0.5">Waiver</p><p className={`font-medium ${client.waiver_signed ? "text-emerald-600" : "text-orange-500"}`}>{client.waiver_signed ? "Signed" : "Not signed"}</p></div>
-            <div><p className="text-xs text-gray-400 mb-0.5">Status</p><p className={`font-medium ${client.users.is_active ? "text-emerald-600" : "text-gray-400"}`}>{client.users.is_active ? "Active" : "Inactive"}</p></div>
+            <div><p className="text-xs text-gray-400 mb-0.5">Status</p><p className={`font-medium ${client.users?.is_active ? "text-emerald-600" : "text-gray-400"}`}>{client.users?.is_active ? "Active" : "Inactive"}</p></div>
           </div>
         )}
       </div>
