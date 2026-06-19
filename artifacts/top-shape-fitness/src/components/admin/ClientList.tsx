@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { ClientWithRelations } from "@/types";
+import type { ClientWithRelations, AppUser } from "@/types";
 
 interface ClientListProps {
   onView: (id: string) => void;
   onAdd: () => void;
 }
 
-function fullName(u: ClientWithRelations["users"]) {
+function fullName(u: AppUser | null | undefined) {
   if (!u) return "(no profile)";
   return [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email;
 }
@@ -44,24 +44,50 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
   async function fetchClients() {
     setLoading(true);
     setError(null);
-    const { data, error } = await supabase
-      .from("clients")
-      .select(`
-        id, notes, waiver_signed, waiver_date, created_by,
-        users!clients_user_id_fkey ( id, email, first_name, last_name, phone, is_active, created_at, role ),
-        client_packages!client_packages_owner_client_id_fkey (
-          id, sessions_remaining, sessions_total, sessions_used,
-          purchase_date, expiration_date, is_active, expiration_waived,
-          packages!package_id ( id, name, session_count, duration_days )
-        )
-      `)
-      .order("id", { ascending: false });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setClients((data as unknown as ClientWithRelations[]) ?? []);
+    // Two separate queries to avoid RLS join issues
+    const [clientsRes, usersRes] = await Promise.all([
+      supabase
+        .from("clients")
+        .select(`
+          id, notes, waiver_signed, waiver_date, created_by, user_id,
+          client_packages!client_packages_owner_client_id_fkey (
+            id, sessions_remaining, sessions_total, sessions_used,
+            purchase_date, expiration_date, is_active, expiration_waived,
+            packages!package_id ( id, name, session_count, duration_days )
+          )
+        `)
+        .order("id", { ascending: false }),
+      supabase
+        .from("users")
+        .select("id, email, first_name, last_name, phone, is_active, created_at, role")
+        .eq("role", "client"),
+    ]);
+
+    if (clientsRes.error) {
+      setError(clientsRes.error.message);
+      setLoading(false);
+      return;
     }
+    if (usersRes.error) {
+      setError(usersRes.error.message);
+      setLoading(false);
+      return;
+    }
+
+    // Build a lookup map: user_id → user row
+    const userMap = new Map<string, AppUser>();
+    for (const u of (usersRes.data ?? []) as AppUser[]) {
+      userMap.set(u.id, u);
+    }
+
+    // Merge: attach the matching user to each client
+    const merged: ClientWithRelations[] = (clientsRes.data ?? []).map((c: any) => ({
+      ...c,
+      users: userMap.get(c.user_id) ?? null,
+    }));
+
+    setClients(merged);
     setLoading(false);
   }
 
@@ -154,7 +180,6 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
                 <tr className="border-b border-gray-100 bg-gray-50/60">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Phone</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Active Package</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sessions Left</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expires</th>
@@ -172,11 +197,8 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
                         <p className="font-medium text-[#2A255D]">{fullName(u)}</p>
                         <p className="text-xs text-gray-400">{u?.email ?? "—"}</p>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{u?.phone ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-medium text-gray-500 capitalize">{u?.role ?? "—"}</span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 text-sm">{u?.phone ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-600 text-sm">
                         {activePkg?.packages?.name ?? <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-4 py-3">
@@ -222,12 +244,7 @@ export default function ClientList({ onView, onAdd }: ClientListProps) {
                     <div>
                       <p className="font-semibold text-[#2A255D]">{fullName(u)}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{u?.email ?? "—"}</p>
-                      {u?.phone && (
-                        <p className="text-xs text-gray-500 mt-0.5">{u.phone}</p>
-                      )}
-                      {u?.role && (
-                        <p className="text-xs text-gray-400 mt-0.5 capitalize">{u.role}</p>
-                      )}
+                      {u?.phone && <p className="text-xs text-gray-500 mt-0.5">{u.phone}</p>}
                     </div>
                     {statusBadge(u?.is_active ?? false)}
                   </div>

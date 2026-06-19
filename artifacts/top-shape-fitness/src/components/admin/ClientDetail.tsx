@@ -325,12 +325,12 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
   const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchClient = useCallback(async () => {
-    const [{ data: clientData, error: clientError }, { data: apptData }] = await Promise.all([
+    // Three separate queries to avoid RLS join issues on the users table
+    const [clientRes, apptRes] = await Promise.all([
       supabase
         .from("clients")
         .select(`
           id, notes, waiver_signed, waiver_date, created_by, user_id,
-          users!clients_user_id_fkey ( id, email, first_name, last_name, phone, is_active, created_at, role ),
           client_packages!client_packages_owner_client_id_fkey (
             id, package_id, owner_client_id, sessions_total, sessions_remaining, sessions_used,
             purchase_date, expiration_date, expiration_waived, is_active, is_shared, shared_with_client_id,
@@ -350,19 +350,35 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         .limit(20),
     ]);
 
-    if (clientError) {
-      setError(clientError.message);
-    } else if (clientData) {
-      const c = clientData as unknown as ClientWithRelations;
-      setClient(c);
-      setEditForm({
-        first_name: c.users?.first_name ?? "",
-        last_name: c.users?.last_name ?? "",
-        phone: c.users?.phone ?? "",
-        notes: c.notes ?? "",
-      });
+    if (clientRes.error) {
+      setError(clientRes.error.message);
+      setLoading(false);
+      return;
     }
-    setAppointments((apptData as unknown as Appointment[]) ?? []);
+
+    const clientRow = clientRes.data as any;
+
+    // Separately fetch the user profile to sidestep RLS join restrictions
+    const { data: userData } = await supabase
+      .from("users")
+      .select("id, email, first_name, last_name, phone, is_active, created_at, role")
+      .eq("id", clientRow.user_id)
+      .single();
+
+    const c: ClientWithRelations = {
+      ...clientRow,
+      users: userData ?? null,
+    };
+
+    setClient(c);
+    setEditForm({
+      first_name: c.users?.first_name ?? "",
+      last_name: c.users?.last_name ?? "",
+      phone: c.users?.phone ?? "",
+      notes: c.notes ?? "",
+    });
+
+    setAppointments((apptRes.data as unknown as Appointment[]) ?? []);
     setLoading(false);
   }, [clientId]);
 
