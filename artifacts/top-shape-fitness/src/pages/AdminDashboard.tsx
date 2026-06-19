@@ -4,6 +4,7 @@ import type { AppUser } from "@/types";
 import ClientManagement from "@/components/admin/ClientManagement";
 import AdminCalendar from "@/components/admin/AdminCalendar";
 import AdminPayroll from "@/components/admin/AdminPayroll";
+import AdminRevenue from "@/components/admin/AdminRevenue";
 
 type AdminSection = "dashboard" | "clients" | "payroll" | "revenue";
 
@@ -244,6 +245,10 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
           <div className="flex-1 flex flex-col overflow-hidden">
             <AdminPayroll />
           </div>
+        ) : activeSection === "revenue" ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <AdminRevenue />
+          </div>
         ) : (
           <main className="flex-1 p-4 md:p-6">
             <div className="max-w-3xl">
@@ -274,16 +279,46 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                     <span className="text-xs font-semibold text-[#1F73B1]">Open →</span>
                   </div>
                 </div>
-                <PlaceholderCard
-                  title="Payroll"
-                  description="Track trainer hours, session counts, and pay period summaries."
-                  icon={<svg className="w-5 h-5 text-[#2A255D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>}
-                />
-                <PlaceholderCard
-                  title="Revenue Snapshot"
-                  description="Overview of package sales, active clients, and monthly revenue."
-                  icon={<svg className="w-5 h-5 text-[#2A255D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>}
-                />
+                <div
+                  onClick={() => setActiveSection("payroll")}
+                  className="bg-white rounded-xl p-5 shadow-sm border border-[#2A255D]/20 cursor-pointer hover:shadow-md hover:border-[#2A255D]/50 transition group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 w-11 h-11 rounded-lg bg-[#2A255D]/8 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-[#2A255D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[#2A255D] text-sm">Payroll</h3>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">Track trainer hours, session counts, and pay period summaries.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="h-1.5 flex-1 rounded-full bg-[#2A255D]/15 mr-3">
+                      <div className="h-full w-full rounded-full bg-[#2A255D]" />
+                    </div>
+                    <span className="text-xs font-semibold text-[#2A255D]">Open →</span>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setActiveSection("revenue")}
+                  className="bg-white rounded-xl p-5 shadow-sm border border-[#06A29E]/25 cursor-pointer hover:shadow-md hover:border-[#06A29E]/55 transition group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 w-11 h-11 rounded-lg bg-[#06A29E]/10 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-[#06A29E]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[#2A255D] text-sm">Revenue Snapshot</h3>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">Overview of package sales, active clients, and monthly revenue.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="h-1.5 flex-1 rounded-full bg-[#06A29E]/20 mr-3">
+                      <div className="h-full w-full rounded-full bg-[#06A29E]" />
+                    </div>
+                    <span className="text-xs font-semibold text-[#06A29E]">Open →</span>
+                  </div>
+                </div>
                 <div
                   onClick={() => setActiveSection("clients")}
                   className="bg-white rounded-xl p-5 shadow-sm border border-[#06A29E]/30 cursor-pointer hover:shadow-md hover:border-[#06A29E]/60 transition group"

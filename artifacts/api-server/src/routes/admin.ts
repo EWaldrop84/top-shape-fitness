@@ -345,4 +345,35 @@ adminRouter.post("/admin/complete-appointment", async (req: Request, res: Respon
   res.json({ ok: true });
 });
 
+// POST /api/admin/waive-expiry — mark a client package's expiration as waived
+adminRouter.post("/admin/waive-expiry", async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!token || !key || !url) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const verifyRes = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: key, Authorization: `Bearer ${token}` },
+  });
+  if (!verifyRes.ok) { res.status(401).json({ error: "Invalid session." }); return; }
+
+  const { package_id } = req.body as { package_id?: string };
+  if (!package_id) { res.status(400).json({ error: "package_id required." }); return; }
+
+  const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", Prefer: "return=minimal" };
+  const patchRes = await fetch(`${url}/rest/v1/client_packages?id=eq.${package_id}`, {
+    method: "PATCH",
+    headers: hdrs,
+    body: JSON.stringify({ expiration_waived: true }),
+  });
+
+  if (!patchRes.ok) {
+    const err = (await patchRes.json()) as { message?: string };
+    res.status(500).json({ error: err.message ?? "Failed to waive expiry." });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
 export default adminRouter;
