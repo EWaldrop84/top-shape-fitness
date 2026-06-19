@@ -1,0 +1,3 @@
+- [Deduction & cancellation rules](deduction-cancellation.md) — immediate deduct if booking within 24hrs; 3-case cancel logic
+- [SMS module](sms-module.md) — sms.ts in api-server; all 8 triggers; logs to sms_log regardless of success
+- [Payroll sync pattern](payroll-sync.md) — payroll_sessions may be empty; POST /api/admin/sync-payroll generates from completed appointments

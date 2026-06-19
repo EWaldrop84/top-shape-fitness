@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import type { AppUser } from "@/types";
 import ClientManagement from "@/components/admin/ClientManagement";
 import AdminCalendar from "@/components/admin/AdminCalendar";
+import AdminPayroll from "@/components/admin/AdminPayroll";
 
 type AdminSection = "dashboard" | "clients" | "payroll" | "revenue";
 
@@ -238,6 +239,10 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
         ) : activeSection === "dashboard" ? (
           <div className="flex-1 flex flex-col overflow-hidden">
             <AdminCalendar />
+          </div>
+        ) : activeSection === "payroll" ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <AdminPayroll />
           </div>
         ) : (
           <main className="flex-1 p-4 md:p-6">

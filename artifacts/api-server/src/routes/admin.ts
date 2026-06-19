@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { sendLowPackageAlert, sendRenewalReminder } from "../sms";
 
 const adminRouter = Router();
 
@@ -159,7 +160,7 @@ adminRouter.post("/admin/create-client", async (req: Request, res: Response) => 
   });
 });
 
-// POST /api/admin/deduct-sessions — process pending session deductions
+// POST /api/admin/deduct-sessions — process pending session deductions with SMS alerts
 adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) => {
   const token = req.headers.authorization?.slice(7);
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -173,9 +174,11 @@ adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) =
 
   const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 
+  // Fetch all scheduled, not-yet-deducted appointments
   const apptRes = await fetch(
-    `${url}/rest/v1/appointments?status=eq.scheduled&session_deducted=eq.false&select=id,client_package_id,appointment_date,start_time`,
-    { headers: hdrs }
+    `${url}/rest/v1/appointments?status=eq.scheduled&session_deducted=eq.false` +
+    `&select=id,client_package_id,appointment_date,start_time`,
+    { headers: hdrs },
   );
   const appointments = (await apptRes.json()) as {
     id: string; client_package_id: string; appointment_date: string; start_time: string;
@@ -185,31 +188,136 @@ adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) =
   let deducted = 0;
 
   for (const appt of appointments) {
+    // Only deduct if within 24 hours
     if (new Date(`${appt.appointment_date}T${appt.start_time}`) > cutoff) continue;
 
+    // Fetch package + client info in one join
     const pkgRes = await fetch(
-      `${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}&select=sessions_remaining,sessions_used`,
-      { headers: hdrs }
+      `${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}` +
+      `&select=sessions_remaining,sessions_used,owner_client_id,` +
+      `clients!owner_client_id(user_id,users!clients_user_id_fkey(first_name,phone))`,
+      { headers: hdrs },
     );
-    const [pkg] = (await pkgRes.json()) as { sessions_remaining: number; sessions_used: number }[];
+    const [pkg] = (await pkgRes.json()) as {
+      sessions_remaining: number;
+      sessions_used: number;
+      owner_client_id: string;
+      clients: { user_id: string; users: { first_name: string; phone: string | null } };
+    }[];
     if (!pkg || pkg.sessions_remaining <= 0) continue;
 
+    const newRemaining = pkg.sessions_remaining - 1;
+    const now = new Date().toISOString();
+
+    // Deduct session from appointment and package simultaneously
     await Promise.all([
       fetch(`${url}/rest/v1/appointments?id=eq.${appt.id}`, {
         method: "PATCH",
         headers: { ...hdrs, Prefer: "return=minimal" },
-        body: JSON.stringify({ session_deducted: true, deducted_at: new Date().toISOString() }),
+        body: JSON.stringify({ session_deducted: true, deducted_at: now }),
       }),
       fetch(`${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}`, {
         method: "PATCH",
         headers: { ...hdrs, Prefer: "return=minimal" },
-        body: JSON.stringify({ sessions_remaining: pkg.sessions_remaining - 1, sessions_used: pkg.sessions_used + 1 }),
+        body: JSON.stringify({
+          sessions_remaining: newRemaining,
+          sessions_used: pkg.sessions_used + 1,
+          ...(newRemaining === 0 ? { is_active: false } : {}),
+        }),
       }),
     ]);
     deducted++;
+
+    // Fire SMS alerts based on new sessions_remaining (non-blocking)
+    const clientUser = pkg.clients?.users;
+    if (clientUser?.phone && pkg.clients?.user_id) {
+      const client = {
+        user_id: pkg.clients.user_id,
+        first_name: clientUser.first_name ?? "there",
+        phone: clientUser.phone,
+      };
+      if (newRemaining === 3) {
+        sendLowPackageAlert(url, key, client, newRemaining).catch(() => {});
+      } else if (newRemaining === 1) {
+        sendRenewalReminder(url, key, client).catch(() => {});
+      }
+    }
   }
 
   res.json({ deducted });
+});
+
+// POST /api/admin/sync-payroll — create payroll_sessions from completed appointments
+adminRouter.post("/admin/sync-payroll", async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!token || !key || !url) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const verifyRes = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: key, Authorization: `Bearer ${token}` },
+  });
+  if (!verifyRes.ok) { res.status(401).json({ error: "Invalid session." }); return; }
+
+  const { week_start, week_end } = req.body as { week_start?: string; week_end?: string };
+  if (!week_start || !week_end) {
+    res.status(400).json({ error: "week_start and week_end required." });
+    return;
+  }
+
+  const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+
+  // Fetch completed appointments in the week
+  const apptRes = await fetch(
+    `${url}/rest/v1/appointments?status=eq.completed` +
+    `&appointment_date=gte.${week_start}&appointment_date=lte.${week_end}` +
+    `&select=id,trainer_id,appointment_date,duration_minutes`,
+    { headers: hdrs },
+  );
+  const appointments = (await apptRes.json()) as {
+    id: string; trainer_id: string; appointment_date: string; duration_minutes: number;
+  }[];
+
+  // Fetch existing payroll_session appointment_ids to avoid duplicates
+  const existingRes = await fetch(
+    `${url}/rest/v1/payroll_sessions?pay_period_start=eq.${week_start}&pay_period_end=eq.${week_end}&select=appointment_id`,
+    { headers: hdrs },
+  );
+  const existing = new Set(
+    ((await existingRes.json()) as { appointment_id: string }[]).map((r) => r.appointment_id),
+  );
+
+  const toInsert = appointments
+    .filter((a) => !existing.has(a.id))
+    .map((a) => ({
+      appointment_id: a.id,
+      trainer_id: a.trainer_id,
+      session_date: a.appointment_date,
+      duration_minutes: a.duration_minutes,
+      hours: Number((a.duration_minutes / 60).toFixed(2)),
+      pay_period_start: week_start,
+      pay_period_end: week_end,
+      color_code: "tomato",
+    }));
+
+  if (toInsert.length === 0) {
+    res.json({ created: 0 });
+    return;
+  }
+
+  const insertRes = await fetch(`${url}/rest/v1/payroll_sessions`, {
+    method: "POST",
+    headers: { ...hdrs, Prefer: "return=minimal" },
+    body: JSON.stringify(toInsert),
+  });
+
+  if (!insertRes.ok) {
+    const err = (await insertRes.json()) as { message?: string };
+    res.status(500).json({ error: err.message ?? "Failed to insert payroll records." });
+    return;
+  }
+
+  res.json({ created: toInsert.length });
 });
 
 // POST /api/admin/complete-appointment
