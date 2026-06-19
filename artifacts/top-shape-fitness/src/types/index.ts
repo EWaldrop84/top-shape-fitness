@@ -48,11 +48,18 @@ export interface ClientWithRelations {
 
 export interface Appointment {
   id: string;
+  client_id: string;
+  trainer_id: string;
+  client_package_id: string;
   appointment_date: string;
   start_time: string;
   end_time: string;
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "no_show" | "forfeited";
+  session_deducted: boolean;
+  cancellation_within_24hr: boolean;
+  forfeiture_waived: boolean;
+  cancelled_at: string | null;
   notes: string | null;
   trainers?: {
     users?: {

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AppUser } from "@/types";
 import ClientManagement from "@/components/admin/ClientManagement";
+import AdminCalendar from "@/components/admin/AdminCalendar";
 
 type AdminSection = "dashboard" | "clients" | "payroll" | "revenue";
 
@@ -79,6 +80,18 @@ function PlaceholderCard({ title, description, icon }: { title: string; descript
 export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) {
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Fire-and-forget session deduction on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) {
+        fetch("/api/admin/deduct-sessions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }).catch(() => {});
+      }
+    });
+  }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -222,6 +235,10 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
         {/* Section content */}
         {activeSection === "clients" ? (
           <ClientManagement />
+        ) : activeSection === "dashboard" ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <AdminCalendar />
+          </div>
         ) : (
           <main className="flex-1 p-4 md:p-6">
             <div className="max-w-3xl">
@@ -232,11 +249,26 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <PlaceholderCard
-                  title="All Schedules"
-                  description="View and manage trainer availability and upcoming appointments."
-                  icon={<svg className="w-5 h-5 text-[#2A255D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>}
-                />
+                <div
+                  onClick={() => setActiveSection("dashboard")}
+                  className="bg-white rounded-xl p-5 shadow-sm border border-[#1F73B1]/30 cursor-pointer hover:shadow-md hover:border-[#1F73B1]/60 transition group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0 w-11 h-11 rounded-lg bg-[#1F73B1]/10 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-[#1F73B1]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-[#2A255D] text-sm group-hover:text-[#1F73B1] transition">All Schedules</h3>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">View and manage trainer availability and upcoming appointments.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="h-1.5 flex-1 rounded-full bg-[#1F73B1]/20 mr-3">
+                      <div className="h-full w-full rounded-full bg-[#1F73B1]" />
+                    </div>
+                    <span className="text-xs font-semibold text-[#1F73B1]">Open →</span>
+                  </div>
+                </div>
                 <PlaceholderCard
                   title="Payroll"
                   description="Track trainer hours, session counts, and pay period summaries."
