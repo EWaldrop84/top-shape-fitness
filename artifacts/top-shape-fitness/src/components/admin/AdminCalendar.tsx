@@ -104,11 +104,7 @@ interface BlockForm {
 export default function AdminCalendar() {
   const today = new Date();
   const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(today));
-  const [selectedDay, setSelectedDay] = useState<Date>(() => {
-    const d = new Date(today);
-    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
-    return d;
-  });
+  const [selectedDay, setSelectedDay] = useState<Date>(() => new Date(today));
 
   // Core data
   const [trainers, setTrainers]           = useState<TrainerRow[]>([]);
@@ -394,7 +390,7 @@ export default function AdminCalendar() {
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { const m = getMondayOfWeek(today); setWeekStart(m); setSelectedDay(today.getDay() === 0 ? addDays(today, 1) : today); }}
+            <button onClick={() => { const m = getMondayOfWeek(today); setWeekStart(m); setSelectedDay(today); }}
               className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition">
               Today
             </button>
@@ -415,15 +411,13 @@ export default function AdminCalendar() {
         <div className="grid grid-cols-7 gap-1">
           {weekDays.map((day, i) => {
             const iso = isoDate(day);
-            const isSun = day.getDay() === 0;
             const isToday = iso === todayISO;
             const isSelected = iso === selISO;
             return (
-              <button key={i} disabled={isSun} onClick={() => setSelectedDay(day)}
-                className={`flex flex-col items-center py-2 rounded-xl transition ${isSelected ? "bg-[#2A255D] text-white" : isSun ? "opacity-40 cursor-not-allowed text-gray-400" : isToday ? "bg-[#06A29E]/10 text-[#06A29E]" : "text-gray-500 hover:bg-gray-50"}`}>
+              <button key={i} onClick={() => setSelectedDay(day)}
+                className={`flex flex-col items-center py-2 rounded-xl transition ${isSelected ? "bg-[#2A255D] text-white" : isToday ? "bg-[#06A29E]/10 text-[#06A29E]" : "text-gray-500 hover:bg-gray-50"}`}>
                 <span className="text-[10px] font-semibold uppercase tracking-wide">{DAYS_SHORT[day.getDay()].slice(0, 1)}</span>
                 <span className={`text-sm font-bold leading-none mt-0.5 ${isSelected ? "text-white" : isToday ? "text-[#06A29E]" : "text-[#2A255D]"}`}>{day.getDate()}</span>
-                {isSun && <span className="text-[9px] leading-tight mt-0.5">Closed</span>}
               </button>
             );
           })}
