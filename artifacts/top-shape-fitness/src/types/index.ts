@@ -50,23 +50,49 @@ export interface Appointment {
   id: string;
   client_id: string;
   trainer_id: string;
-  client_package_id: string;
+  client_package_id: string | null;
   appointment_date: string;
   start_time: string;
   end_time: string;
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "no_show" | "forfeited";
+  session_type: "training" | "consultation";
   session_deducted: boolean;
   cancellation_within_24hr: boolean;
   forfeiture_waived: boolean;
   cancelled_at: string | null;
   notes: string | null;
+  is_recurring: boolean;
+  recurring_days: number[] | null;
+  recurring_series_id: string | null;
   trainers?: {
     users?: {
       first_name: string | null;
       last_name: string | null;
     };
   };
+}
+
+export interface RecurringSeries {
+  id: string;
+  trainer_id: string;
+  client_id: string;
+  client_package_id: string | null;
+  days_of_week: number[];
+  start_time: string;
+  duration_minutes: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ClientCustomPricing {
+  id: string;
+  client_id: string;
+  package_name: string;
+  session_count: number;
+  custom_price_cents: number;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface Trainer {
