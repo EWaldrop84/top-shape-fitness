@@ -148,47 +148,69 @@ ALTER TABLE public.payroll_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sms_log ENABLE ROW LEVEL SECURITY;
 
 -- Allow authenticated users to read their own user record
-CREATE POLICY IF NOT EXISTS "Users can read own record"
-  ON public.users FOR SELECT
-  USING (auth.uid() = id);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'users' AND policyname = 'Users can read own record') THEN
+    CREATE POLICY "Users can read own record" ON public.users FOR SELECT USING (auth.uid() = id);
+  END IF;
+END $$;
 
 -- Allow authenticated users to read all tables (app-level enforcement handles restrictions)
-CREATE POLICY IF NOT EXISTS "Authenticated read users"
-  ON public.users FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'users' AND policyname = 'Authenticated read users') THEN
+    CREATE POLICY "Authenticated read users" ON public.users FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read trainers"
-  ON public.trainers FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'trainers' AND policyname = 'Authenticated read trainers') THEN
+    CREATE POLICY "Authenticated read trainers" ON public.trainers FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read clients"
-  ON public.clients FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'clients' AND policyname = 'Authenticated read clients') THEN
+    CREATE POLICY "Authenticated read clients" ON public.clients FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read packages"
-  ON public.packages FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'packages' AND policyname = 'Authenticated read packages') THEN
+    CREATE POLICY "Authenticated read packages" ON public.packages FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read client_packages"
-  ON public.client_packages FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'client_packages' AND policyname = 'Authenticated read client_packages') THEN
+    CREATE POLICY "Authenticated read client_packages" ON public.client_packages FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read availability"
-  ON public.availability FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'availability' AND policyname = 'Authenticated read availability') THEN
+    CREATE POLICY "Authenticated read availability" ON public.availability FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read appointments"
-  ON public.appointments FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'appointments' AND policyname = 'Authenticated read appointments') THEN
+    CREATE POLICY "Authenticated read appointments" ON public.appointments FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read waitlist"
-  ON public.waitlist FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'waitlist' AND policyname = 'Authenticated read waitlist') THEN
+    CREATE POLICY "Authenticated read waitlist" ON public.waitlist FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read payroll_sessions"
-  ON public.payroll_sessions FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'payroll_sessions' AND policyname = 'Authenticated read payroll_sessions') THEN
+    CREATE POLICY "Authenticated read payroll_sessions" ON public.payroll_sessions FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read sms_log"
-  ON public.sms_log FOR SELECT TO authenticated
-  USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'sms_log' AND policyname = 'Authenticated read sms_log') THEN
+    CREATE POLICY "Authenticated read sms_log" ON public.sms_log FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;

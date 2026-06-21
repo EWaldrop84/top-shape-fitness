@@ -57,8 +57,14 @@ ALTER TABLE public.client_packages
 ALTER TABLE public.recurring_series ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.client_custom_pricing ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read recurring_series"
-  ON public.recurring_series FOR SELECT TO authenticated USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'recurring_series' AND policyname = 'Authenticated read recurring_series') THEN
+    CREATE POLICY "Authenticated read recurring_series" ON public.recurring_series FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
 
-CREATE POLICY IF NOT EXISTS "Authenticated read client_custom_pricing"
-  ON public.client_custom_pricing FOR SELECT TO authenticated USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'client_custom_pricing' AND policyname = 'Authenticated read client_custom_pricing') THEN
+    CREATE POLICY "Authenticated read client_custom_pricing" ON public.client_custom_pricing FOR SELECT TO authenticated USING (true);
+  END IF;
+END $$;
