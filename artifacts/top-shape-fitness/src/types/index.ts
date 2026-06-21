@@ -73,6 +73,22 @@ export interface Appointment {
   };
 }
 
+export interface TimeBlock {
+  id: string;
+  trainer_id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  reason: "time_off" | "personal" | "admin" | "other";
+  notes: string | null;
+  is_recurring: boolean;
+  recurring_days: number[] | null;
+  recurring_series_id: string | null;
+  is_cancelled: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface RecurringSeries {
   id: string;
   trainer_id: string;
