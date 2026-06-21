@@ -127,8 +127,8 @@ blocksRouter.post("/blocks/create-recurring", async (req: Request, res: Response
     method: "POST",
     headers: { ...hdrs, Prefer: "return=representation" },
     body: JSON.stringify({
-      trainer_id: resolved.trainerId, days_of_week: recurring_days,
-      start_time, end_time, reason, notes: notes ?? null, created_by: caller.id,
+      trainer_id: resolved.trainerId, recurring_days,
+      start_time, end_time, reason, notes: notes ?? null, is_active: true, created_by: caller.id,
     }),
   });
   if (!seriesRes.ok) {
