@@ -82,7 +82,7 @@ export default function AdminPayroll() {
   // ── Fetch payroll_sessions for the selected week ─────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("payroll_sessions")
       .select(`
         id, session_date, duration_minutes, hours, color_code, notes, trainer_id,
@@ -92,6 +92,14 @@ export default function AdminPayroll() {
       .gte("session_date", isoDate(weekStart))
       .lte("session_date", isoDate(weekEnd))
       .order("session_date");
+
+    console.log("[Payroll] fetchData", {
+      weekStart: isoDate(weekStart),
+      weekEnd: isoDate(weekEnd),
+      rowCount: data?.length ?? 0,
+      error,
+      rawData: data,
+    });
 
     const parsed: PayrollRow[] = (data ?? []).map((r: any) => {
       const tu = r.trainers?.users ?? {};
@@ -117,23 +125,68 @@ export default function AdminPayroll() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── Sync completed appointments → payroll_sessions ───────────────────────
+  // ── Sync completed appointments → payroll_sessions (direct Supabase, no API server) ──
   async function syncPayroll() {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) { setSyncMsg("Session expired."); return; }
+      const weekStartISO = isoDate(weekStart);
+      const weekEndISO   = isoDate(weekEnd);
 
-      const res = await fetch("/api/admin/sync-payroll", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ week_start: isoDate(weekStart), week_end: isoDate(weekEnd) }),
-      });
-      const json = (await res.json()) as { created?: number; error?: string };
-      if (!res.ok) { setSyncMsg(json.error ?? "Sync failed."); return; }
-      setSyncMsg(`Synced ${json.created ?? 0} session${json.created === 1 ? "" : "s"}.`);
+      // Step 1: fetch completed appointments in the week
+      const { data: appointments, error: apptErr } = await supabase
+        .from("appointments")
+        .select("id, trainer_id, appointment_date, duration_minutes")
+        .eq("status", "completed")
+        .gte("appointment_date", weekStartISO)
+        .lte("appointment_date", weekEndISO);
+
+      console.log("[Payroll] sync — appointments query", { weekStartISO, weekEndISO, count: appointments?.length ?? 0, apptErr });
+
+      if (apptErr) { setSyncMsg("Error fetching appointments: " + apptErr.message); return; }
+      if (!appointments || appointments.length === 0) {
+        setSyncMsg("No completed sessions found for this week.");
+        return;
+      }
+
+      // Step 2: find already-synced appointment_ids for this pay period
+      const { data: existing, error: existErr } = await supabase
+        .from("payroll_sessions")
+        .select("appointment_id")
+        .eq("pay_period_start", weekStartISO)
+        .eq("pay_period_end", weekEndISO);
+
+      if (existErr) { setSyncMsg("Error checking existing records: " + existErr.message); return; }
+
+      const existingIds = new Set((existing ?? []).map((r: { appointment_id: string }) => r.appointment_id));
+
+      // Step 3: filter out duplicates and build insert rows
+      const toInsert = appointments
+        .filter((a) => !existingIds.has(a.id))
+        .map((a) => ({
+          appointment_id:   a.id,
+          trainer_id:       a.trainer_id,
+          session_date:     a.appointment_date,
+          duration_minutes: a.duration_minutes,
+          hours:            Number((a.duration_minutes / 60).toFixed(2)),
+          pay_period_start: weekStartISO,
+          pay_period_end:   weekEndISO,
+          color_code:       "tomato",
+        }));
+
+      console.log("[Payroll] sync — toInsert", { total: appointments.length, alreadyExist: existingIds.size, newRows: toInsert.length });
+
+      if (toInsert.length === 0) {
+        setSyncMsg("All sessions already synced.");
+        await fetchData();
+        return;
+      }
+
+      // Step 4: insert
+      const { error: insertErr } = await supabase.from("payroll_sessions").insert(toInsert);
+      if (insertErr) { setSyncMsg("Insert failed: " + insertErr.message); return; }
+
+      setSyncMsg(`Synced ${toInsert.length} session${toInsert.length === 1 ? "" : "s"}.`);
       await fetchData();
     } finally {
       setSyncing(false);
