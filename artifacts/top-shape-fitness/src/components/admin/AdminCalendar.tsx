@@ -519,13 +519,13 @@ export default function AdminCalendar() {
                     {/* Appointments (z-index 10, above blocks) */}
                     {dayAppts.map((appt) => {
                       const topIdx = timeToSlotIndex(appt.start_time);
-                      const heightSlots = Math.ceil(appt.duration_minutes / 30);
+                      const heightPx = (appt.duration_minutes / 30) * SLOT_HEIGHT - 4;
                       const style = STATUS_STYLES[appt.status] ?? STATUS_STYLES.scheduled;
                       const isConsult = appt.session_type === "consultation";
                       const isRec = appt.is_recurring;
                       return (
                         <div key={appt.id}
-                          style={{ position: "absolute", top: topIdx * SLOT_HEIGHT + 2, height: heightSlots * SLOT_HEIGHT - 4, left: 3, right: 3, zIndex: 10 }}
+                          style={{ position: "absolute", top: topIdx * SLOT_HEIGHT + 2, height: heightPx, left: 3, right: 3, zIndex: 10 }}
                           className={`${style.bg} border ${style.border} rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden hover:opacity-80 transition`}
                           onClick={() => { setViewAppt(appt); setActionResult(null); }}>
                           <p className={`text-[11px] font-semibold leading-tight truncate ${style.text}`}>{clientNameMap.get(appt.client_id) ?? "Client"}</p>
