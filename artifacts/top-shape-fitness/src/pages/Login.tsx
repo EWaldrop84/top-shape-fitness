@@ -84,7 +84,7 @@ export default function Login({ onLogin }: LoginProps) {
               <rect x="5" y="9" width="14" height="6" rx="1" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Shape Studio</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Top Shape Fitness</h1>
           <p className="text-sm text-white/50 mt-1">Private Personal Training Studio</p>
         </div>
 
@@ -152,7 +152,7 @@ export default function Login({ onLogin }: LoginProps) {
         </div>
 
         <p className="text-center text-xs text-white/30 mt-6">
-          © {new Date().getFullYear()} Shape Studio
+          © {new Date().getFullYear()} Top Shape Fitness
         </p>
       </div>
     </div>
