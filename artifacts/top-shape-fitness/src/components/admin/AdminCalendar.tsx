@@ -633,9 +633,9 @@ export default function AdminCalendar() {
                     <div className="mt-2.5">
                       <div className="flex gap-1.5">
                         {DAY_LABELS.map((d, i) => (
-                          <button key={i} type="button" disabled={i === 0}
+                          <button key={i} type="button"
                             onClick={() => setForm((f) => ({ ...f, recurringDays: f.recurringDays.includes(i) ? f.recurringDays.filter((x) => x !== i) : [...f.recurringDays, i] }))}
-                            className={`w-8 h-8 rounded-full text-xs font-semibold transition ${form.recurringDays.includes(i) ? "bg-[#2A255D] text-white" : i === 0 ? "bg-gray-100 text-gray-300 cursor-not-allowed" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
+                            className={`w-8 h-8 rounded-full text-xs font-semibold transition ${form.recurringDays.includes(i) ? "bg-[#2A255D] text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}>
                             {d}
                           </button>
                         ))}

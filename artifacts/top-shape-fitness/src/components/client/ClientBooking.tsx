@@ -28,15 +28,14 @@ function formatTime(t: string) {
   return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
-// Get next 30 Mon-Sat dates
+// Get next 30 dates across all 7 days of the week
 function getAvailableDates(): Date[] {
   const dates: Date[] = [];
   const d = new Date();
   d.setHours(12, 0, 0, 0);
-  while (dates.length < 36) {
+  while (dates.length < 30) {
     d.setDate(d.getDate() + 1);
-    if (d.getDay() !== 0) dates.push(new Date(d)); // skip Sundays
-    if (dates.length >= 30) break;
+    dates.push(new Date(d));
   }
   return dates;
 }
