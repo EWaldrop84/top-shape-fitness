@@ -133,6 +133,8 @@ export interface TrainerAppointment {
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "no_show" | "forfeited";
   notes: string | null;
+  is_recurring: boolean;
+  recurring_series_id: string | null;
   clientName?: string;
 }
 

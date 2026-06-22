@@ -131,6 +131,10 @@ export default function AdminCalendar() {
   const [actionLoading, setActionLoading]     = useState(false);
   const [actionResult, setActionResult]       = useState<string | null>(null);
   const [stoppingRecurring, setStoppingRecurring] = useState(false);
+  const [deleteConfirm, setDeleteConfirm]         = useState(false);
+  const [deleteLoading, setDeleteLoading]         = useState(false);
+  const [backfilling, setBackfilling]             = useState(false);
+  const [backfillResult, setBackfillResult]       = useState<string | null>(null);
 
   // Block time modal
   const [showBlockModal, setShowBlockModal]       = useState(false);
@@ -327,6 +331,50 @@ export default function AdminCalendar() {
     setStoppingRecurring(false); setViewAppt(null); setActionResult(null); fetchData();
   }
 
+  async function handleDeleteSingle() {
+    if (!viewAppt) return;
+    setDeleteLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { setDeleteLoading(false); return; }
+    await fetch("/api/booking/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ appointment_id: viewAppt.id }),
+    });
+    setDeleteLoading(false); setDeleteConfirm(false); setViewAppt(null); setActionResult(null); fetchData();
+  }
+
+  async function handleDeleteFuture() {
+    if (!viewAppt?.recurring_series_id) return;
+    setDeleteLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { setDeleteLoading(false); return; }
+    await fetch("/api/booking/delete-future", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ recurring_series_id: viewAppt.recurring_series_id, appointment_date: viewAppt.appointment_date }),
+    });
+    setDeleteLoading(false); setDeleteConfirm(false); setViewAppt(null); setActionResult(null); fetchData();
+  }
+
+  async function handleBackfill() {
+    setBackfilling(true); setBackfillResult(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { setBackfilling(false); return; }
+    const res = await fetch("/api/admin/backfill-recurring", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json() as { seriesCreated?: number; occurrencesCreated?: number; message?: string };
+    setBackfilling(false);
+    setBackfillResult(data.message ?? `Done — ${data.seriesCreated ?? 0} series linked, ${data.occurrencesCreated ?? 0} future sessions generated.`);
+    fetchData();
+    setTimeout(() => setBackfillResult(null), 6000);
+  }
+
   function isOccupied(trainerId: string, slotIdx: number, date: string): boolean {
     const hasAppt = appointments.some((a) => {
       if (a.trainer_id !== trainerId || a.appointment_date !== date) return false;
@@ -404,8 +452,18 @@ export default function AdminCalendar() {
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
               New
             </button>
+            <button onClick={handleBackfill} disabled={backfilling} title="Backfill recurring sessions into future weeks"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 text-xs font-semibold hover:bg-gray-50 transition disabled:opacity-50">
+              <svg className={`w-3.5 h-3.5 ${backfilling ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
+              {backfilling ? "Syncing…" : "Sync"}
+            </button>
           </div>
         </div>
+        {backfillResult && (
+          <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100">
+            <p className="text-xs text-emerald-700 font-medium">{backfillResult}</p>
+          </div>
+        )}
 
         {/* Day strip */}
         <div className="grid grid-cols-7 gap-1">
@@ -527,7 +585,7 @@ export default function AdminCalendar() {
                         <div key={appt.id}
                           style={{ position: "absolute", top: topIdx * SLOT_HEIGHT + 2, height: heightPx, left: 3, right: 3, zIndex: 10 }}
                           className={`${style.bg} border ${style.border} rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden hover:opacity-80 transition`}
-                          onClick={() => { setViewAppt(appt); setActionResult(null); }}>
+                          onClick={() => { setViewAppt(appt); setActionResult(null); setDeleteConfirm(false); setDeleteLoading(false); }}>
                           <p className={`text-[11px] font-semibold leading-tight truncate ${style.text}`}>{clientNameMap.get(appt.client_id) ?? "Client"}</p>
                           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                             <p className={`text-[10px] leading-tight ${style.text} opacity-70`}>{appt.duration_minutes}min · {formatTime(appt.start_time)}</p>
@@ -716,7 +774,7 @@ export default function AdminCalendar() {
                   </span>
                 )}
               </div>
-              <button onClick={() => { setViewAppt(null); setActionResult(null); }} className="p-1 text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setViewAppt(null); setActionResult(null); setDeleteConfirm(false); }} className="p-1 text-gray-400 hover:text-gray-600">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -737,7 +795,7 @@ export default function AdminCalendar() {
               {actionResult && <p className="text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">{actionResult}</p>}
             </div>
             {viewAppt.status === "scheduled" && !actionResult && (
-              <div className="px-5 pb-5 space-y-2">
+              <div className="px-5 pb-4 space-y-2">
                 <div className="flex gap-3">
                   <button onClick={() => handleViewAction("cancel")} disabled={actionLoading}
                     className="flex-1 py-2.5 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60">
@@ -756,6 +814,40 @@ export default function AdminCalendar() {
                 )}
               </div>
             )}
+            {/* ── Delete section (always visible) ── */}
+            <div className="px-5 pb-5 border-t border-gray-100 pt-3">
+              {!deleteConfirm ? (
+                <button onClick={() => setDeleteConfirm(true)}
+                  className="w-full py-2.5 rounded-xl border border-red-200 text-sm font-semibold text-red-500 hover:bg-red-50 transition">
+                  Delete Session…
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-center text-gray-400">This permanently removes the session from the calendar.</p>
+                  {viewAppt.is_recurring && viewAppt.recurring_series_id ? (
+                    <>
+                      <button onClick={handleDeleteFuture} disabled={deleteLoading}
+                        className="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition disabled:opacity-60">
+                        {deleteLoading ? "Deleting…" : "Delete This + All Future Sessions"}
+                      </button>
+                      <button onClick={handleDeleteSingle} disabled={deleteLoading}
+                        className="w-full py-2.5 rounded-xl border border-red-300 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60">
+                        {deleteLoading ? "Deleting…" : "Delete This Session Only"}
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={handleDeleteSingle} disabled={deleteLoading}
+                      className="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition disabled:opacity-60">
+                      {deleteLoading ? "Deleting…" : "Confirm Delete"}
+                    </button>
+                  )}
+                  <button onClick={() => setDeleteConfirm(false)} disabled={deleteLoading}
+                    className="w-full py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition disabled:opacity-60">
+                    Keep Session
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -124,7 +124,7 @@ bookingRouter.post("/booking/create", async (req: Request, res: Response) => {
       `${url}/rest/v1/client_packages?id=eq.${client_package_id}&select=sessions_remaining,sessions_used,is_active,owner_client_id`,
       { headers: svcHeaders(key) },
     );
-    const [p] = (await pkgRes.json()) as typeof pkg[];
+    const [p] = (await pkgRes.json()) as { sessions_remaining: number; sessions_used: number; is_active: boolean; owner_client_id: string }[];
     if (!p || !p.is_active || p.sessions_remaining <= 0) {
       res.status(400).json({ error: "No sessions remaining in this package." });
       return;
@@ -408,6 +408,129 @@ bookingRouter.post("/booking/cancel", async (req: Request, res: Response) => {
       await Promise.all(tasks);
     } catch { /* never crash */ }
   })();
+});
+
+// ── POST /api/booking/delete ─────────────────────────────────────────────────
+// Hard-deletes a single appointment; returns the session to the package if it was already deducted.
+bookingRouter.post("/booking/delete", async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!token || !key || !url) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const caller = await verifyToken(url, key, token);
+  if (!caller) { res.status(401).json({ error: "Invalid session." }); return; }
+
+  const { appointment_id } = req.body as { appointment_id: string };
+  if (!appointment_id) { res.status(400).json({ error: "appointment_id required." }); return; }
+
+  const hdrs = svcHeaders(key);
+
+  const apptRes = await fetch(
+    `${url}/rest/v1/appointments?id=eq.${appointment_id}&select=id,client_package_id,session_deducted,session_type,status&limit=1`,
+    { headers: hdrs },
+  );
+  const [appt] = (await apptRes.json()) as {
+    id: string; client_package_id: string | null;
+    session_deducted: boolean; session_type: string; status: string;
+  }[];
+  if (!appt) { res.status(404).json({ error: "Appointment not found." }); return; }
+
+  // Return the session to the package if it was already deducted on a scheduled training session
+  if (appt.status === "scheduled" && appt.session_deducted && appt.session_type !== "consultation" && appt.client_package_id) {
+    const pkgRes = await fetch(
+      `${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}&select=sessions_remaining,sessions_used,is_active&limit=1`,
+      { headers: hdrs },
+    );
+    const [pkg] = (await pkgRes.json()) as { sessions_remaining: number; sessions_used: number; is_active: boolean }[];
+    if (pkg) {
+      const newRemaining = pkg.sessions_remaining + 1;
+      await fetch(`${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}`, {
+        method: "PATCH",
+        headers: { ...hdrs, Prefer: "return=minimal" },
+        body: JSON.stringify({
+          sessions_remaining: newRemaining,
+          sessions_used: Math.max(0, pkg.sessions_used - 1),
+          ...(!pkg.is_active && newRemaining > 0 ? { is_active: true } : {}),
+        }),
+      });
+    }
+  }
+
+  await fetch(`${url}/rest/v1/appointments?id=eq.${appointment_id}`, {
+    method: "DELETE",
+    headers: { ...hdrs, Prefer: "return=minimal" },
+  });
+
+  res.json({ ok: true });
+});
+
+// ── POST /api/booking/delete-future ─────────────────────────────────────────
+// Hard-deletes all scheduled appointments in a recurring series from a given date forward,
+// returning any already-deducted sessions back to their packages.
+bookingRouter.post("/booking/delete-future", async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!token || !key || !url) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const caller = await verifyToken(url, key, token);
+  if (!caller) { res.status(401).json({ error: "Invalid session." }); return; }
+
+  const { recurring_series_id, appointment_date } = req.body as {
+    recurring_series_id: string; appointment_date: string;
+  };
+  if (!recurring_series_id || !appointment_date) {
+    res.status(400).json({ error: "recurring_series_id and appointment_date required." }); return;
+  }
+
+  const hdrs = svcHeaders(key);
+
+  // Fetch all scheduled appointments in this series from this date forward
+  const apptRes = await fetch(
+    `${url}/rest/v1/appointments?recurring_series_id=eq.${recurring_series_id}&appointment_date=gte.${appointment_date}&status=eq.scheduled&select=id,client_package_id,session_deducted,session_type`,
+    { headers: hdrs },
+  );
+  const appts = (await apptRes.json()) as {
+    id: string; client_package_id: string | null;
+    session_deducted: boolean; session_type: string;
+  }[];
+
+  // Group deducted sessions by package to return them in batch
+  const byPackage = new Map<string, number>();
+  for (const a of appts) {
+    if (a.session_deducted && a.session_type !== "consultation" && a.client_package_id) {
+      byPackage.set(a.client_package_id, (byPackage.get(a.client_package_id) ?? 0) + 1);
+    }
+  }
+
+  for (const [pkgId, count] of byPackage) {
+    const pkgRes = await fetch(
+      `${url}/rest/v1/client_packages?id=eq.${pkgId}&select=sessions_remaining,sessions_used,is_active&limit=1`,
+      { headers: hdrs },
+    );
+    const [pkg] = (await pkgRes.json()) as { sessions_remaining: number; sessions_used: number; is_active: boolean }[];
+    if (pkg) {
+      const newRemaining = pkg.sessions_remaining + count;
+      await fetch(`${url}/rest/v1/client_packages?id=eq.${pkgId}`, {
+        method: "PATCH",
+        headers: { ...hdrs, Prefer: "return=minimal" },
+        body: JSON.stringify({
+          sessions_remaining: newRemaining,
+          sessions_used: Math.max(0, pkg.sessions_used - count),
+          ...(!pkg.is_active && newRemaining > 0 ? { is_active: true } : {}),
+        }),
+      });
+    }
+  }
+
+  // Hard-delete all matching appointments
+  await fetch(
+    `${url}/rest/v1/appointments?recurring_series_id=eq.${recurring_series_id}&appointment_date=gte.${appointment_date}&status=eq.scheduled`,
+    { method: "DELETE", headers: { ...hdrs, Prefer: "return=minimal" } },
+  );
+
+  res.json({ ok: true, deleted: appts.length });
 });
 
 export default bookingRouter;

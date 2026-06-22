@@ -376,4 +376,130 @@ adminRouter.post("/admin/waive-expiry", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── POST /api/admin/backfill-recurring ──────────────────────────────────────
+// Finds orphan recurring appointments (is_recurring=true, recurring_series_id IS NULL),
+// groups them into series records, and generates 52 weeks of future occurrences per series.
+adminRouter.post("/admin/backfill-recurring", async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const token = authHeader.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!key || !url) { res.status(503).json({ error: "Server misconfigured." }); return; }
+
+  const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+
+  const verifyRes = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } });
+  if (!verifyRes.ok) { res.status(401).json({ error: "Invalid session." }); return; }
+  const caller = (await verifyRes.json()) as { id: string };
+  const userRes = await fetch(`${url}/rest/v1/users?id=eq.${caller.id}&select=role&limit=1`, { headers: hdrs });
+  const [callerUser] = (await userRes.json()) as { role: string }[];
+  if (!callerUser || callerUser.role !== "admin") { res.status(403).json({ error: "Admin access required." }); return; }
+
+  function localAddMinutes(time: string, minutes: number): string {
+    const [h, m] = time.split(":").map(Number);
+    const total = h * 60 + m + minutes;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  }
+
+  // Fetch all orphan recurring appointments (no series ID yet)
+  const orphanRes = await fetch(
+    `${url}/rest/v1/appointments?is_recurring=eq.true&recurring_series_id=is.null&select=id,trainer_id,client_id,client_package_id,appointment_date,start_time,duration_minutes`,
+    { headers: hdrs },
+  );
+  const orphans = (await orphanRes.json()) as {
+    id: string; trainer_id: string; client_id: string; client_package_id: string | null;
+    appointment_date: string; start_time: string; duration_minutes: number;
+  }[];
+
+  if (!Array.isArray(orphans) || orphans.length === 0) {
+    res.json({ seriesCreated: 0, occurrencesCreated: 0, message: "No orphan recurring appointments found." });
+    return;
+  }
+
+  // Group by trainer_id + client_id + start_time (each unique combo = one recurring series)
+  const groups = new Map<string, typeof orphans>();
+  for (const appt of orphans) {
+    const groupKey = `${appt.trainer_id}__${appt.client_id}__${appt.start_time}`;
+    const g = groups.get(groupKey) ?? [];
+    g.push(appt);
+    groups.set(groupKey, g);
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+
+  let seriesCreated = 0;
+  let occurrencesCreated = 0;
+
+  for (const appts of groups.values()) {
+    const { trainer_id, client_id, client_package_id, start_time, duration_minutes } = appts[0];
+
+    // Infer days of week from existing appointment dates
+    const daysOfWeek = [...new Set(appts.map((a) => new Date(a.appointment_date + "T12:00:00").getDay()))];
+
+    // Create the recurring_series record
+    const seriesCreateRes = await fetch(`${url}/rest/v1/recurring_series`, {
+      method: "POST",
+      headers: { ...hdrs, Prefer: "return=representation" },
+      body: JSON.stringify({ trainer_id, client_id, client_package_id, days_of_week: daysOfWeek, start_time, duration_minutes }),
+    });
+    if (!seriesCreateRes.ok) continue;
+    const [series] = (await seriesCreateRes.json()) as { id: string }[];
+    if (!series?.id) continue;
+
+    // Stamp all orphan appointments in this group with the new series ID
+    await fetch(
+      `${url}/rest/v1/appointments?trainer_id=eq.${trainer_id}&client_id=eq.${client_id}&start_time=eq.${start_time}&is_recurring=eq.true&recurring_series_id=is.null`,
+      { method: "PATCH", headers: { ...hdrs, Prefer: "return=minimal" }, body: JSON.stringify({ recurring_series_id: series.id }) },
+    );
+
+    seriesCreated++;
+
+    // Fetch already-existing appointments for this slot on or after today (avoid duplicates)
+    const existingRes = await fetch(
+      `${url}/rest/v1/appointments?trainer_id=eq.${trainer_id}&client_id=eq.${client_id}&start_time=eq.${start_time}&appointment_date=gte.${todayStr}&select=appointment_date`,
+      { headers: hdrs },
+    );
+    const existingList = (await existingRes.json()) as { appointment_date: string }[];
+    const existingDates = new Set(existingList.map((a) => a.appointment_date));
+
+    // Generate 52 weeks of future occurrences for each day of week in this series
+    const end_time = localAddMinutes(start_time, duration_minutes);
+    const newAppts: object[] = [];
+
+    for (let week = 0; week < 52; week++) {
+      for (const dow of daysOfWeek) {
+        const d = new Date(today);
+        d.setDate(d.getDate() + week * 7 + ((dow - today.getDay() + 7) % 7));
+        if (d < today) continue;
+        const dateStr = d.toISOString().split("T")[0];
+        if (existingDates.has(dateStr)) continue;
+        existingDates.add(dateStr); // prevent within-run duplication
+
+        newAppts.push({
+          trainer_id, client_id, client_package_id,
+          appointment_date: dateStr, start_time, end_time, duration_minutes,
+          status: "scheduled", session_type: "training",
+          session_deducted: false, is_recurring: true,
+          recurring_days: daysOfWeek, recurring_series_id: series.id,
+        });
+      }
+    }
+
+    for (let i = 0; i < newAppts.length; i += 100) {
+      const batch = newAppts.slice(i, i + 100);
+      const r = await fetch(`${url}/rest/v1/appointments`, {
+        method: "POST",
+        headers: { ...hdrs, Prefer: "return=minimal" },
+        body: JSON.stringify(batch),
+      });
+      if (r.ok) occurrencesCreated += batch.length;
+    }
+  }
+
+  res.json({ seriesCreated, occurrencesCreated });
+});
+
 export default adminRouter;

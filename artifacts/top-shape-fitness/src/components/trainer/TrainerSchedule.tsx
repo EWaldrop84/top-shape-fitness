@@ -66,6 +66,9 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
   const [availForm, setAvailForm] = useState(EMPTY_AVAIL);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [viewAppt, setViewAppt] = useState<TrainerAppointment | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const isViewingOwn = viewingTrainerId === trainerId;
 
@@ -76,7 +79,7 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
     const [apptsRes, availRes] = await Promise.all([
       supabase
         .from("appointments")
-        .select("id, client_id, appointment_date, start_time, end_time, duration_minutes, status, notes")
+        .select("id, client_id, appointment_date, start_time, end_time, duration_minutes, status, notes, is_recurring, recurring_series_id")
         .eq("trainer_id", viewingTrainerId)
         .gte("appointment_date", isoDate(weekStart))
         .lte("appointment_date", isoDate(weekEnd))
@@ -281,8 +284,9 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
                     return (
                       <div
                         key={appt.id}
+                        onClick={() => { if (isViewingOwn) { setViewAppt(appt); setDeleteConfirm(false); setDeleteLoading(false); } }}
                         className={`bg-white rounded-xl border border-gray-100 border-l-4 ${style.border} px-4 py-3 shadow-sm transition ${
-                          !isViewingOwn ? "opacity-50" : ""
+                          !isViewingOwn ? "opacity-50 cursor-default" : "cursor-pointer hover:shadow-md"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -293,6 +297,9 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
                             </p>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {appt.is_recurring && (
+                              <svg className="w-3 h-3 text-indigo-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 014-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 01-4 4H3" /></svg>
+                            )}
                             <span className="text-[11px] text-gray-400 font-medium">{appt.duration_minutes} min</span>
                             <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${style.bg} ${style.text}`}>
                               {style.label}
@@ -359,6 +366,108 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
           </>
         )}
       </div>
+
+      {/* ── Appointment Detail Modal ──────────────────────────────────────── */}
+      {viewAppt && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+            <div className="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-[#2A255D] text-base">Session Details</h3>
+                {viewAppt.is_recurring && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-700">
+                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 014-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 01-4 4H3" /></svg>
+                    Recurring
+                  </span>
+                )}
+              </div>
+              <button onClick={() => { setViewAppt(null); setDeleteConfirm(false); }} className="p-1 text-gray-400 hover:text-gray-600">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-xs text-gray-400 mb-0.5">Client</p><p className="font-semibold text-[#2A255D]">{clientNameMap.get(viewAppt.client_id) ?? "—"}</p></div>
+                <div><p className="text-xs text-gray-400 mb-0.5">Status</p>
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).bg} ${(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).text}`}>
+                    {(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).label}
+                  </span>
+                </div>
+                <div><p className="text-xs text-gray-400 mb-0.5">Date</p><p className="font-medium text-[#2A255D]">{new Date(viewAppt.appointment_date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</p></div>
+                <div><p className="text-xs text-gray-400 mb-0.5">Time</p><p className="font-medium text-[#2A255D]">{formatTime(viewAppt.start_time)} – {formatTime(viewAppt.end_time)}</p></div>
+                <div><p className="text-xs text-gray-400 mb-0.5">Duration</p><p className="font-medium text-[#2A255D]">{viewAppt.duration_minutes} min</p></div>
+              </div>
+              {viewAppt.notes && <div><p className="text-xs text-gray-400 mb-0.5">Notes</p><p className="text-sm text-gray-700">{viewAppt.notes}</p></div>}
+            </div>
+            <div className="px-5 pb-5 border-t border-gray-100 pt-3">
+              {!deleteConfirm ? (
+                <button onClick={() => setDeleteConfirm(true)}
+                  className="w-full py-2.5 rounded-xl border border-red-200 text-sm font-semibold text-red-500 hover:bg-red-50 transition">
+                  Delete Session…
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-center text-gray-400">This permanently removes the session from your calendar.</p>
+                  {viewAppt.is_recurring && viewAppt.recurring_series_id ? (
+                    <>
+                      <button onClick={async () => {
+                        setDeleteLoading(true);
+                        const { data: { session } } = await supabase.auth.getSession();
+                        const token = session?.access_token;
+                        if (!token) { setDeleteLoading(false); return; }
+                        await fetch("/api/booking/delete-future", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ recurring_series_id: viewAppt.recurring_series_id, appointment_date: viewAppt.appointment_date }),
+                        });
+                        setDeleteLoading(false); setDeleteConfirm(false); setViewAppt(null); fetchData();
+                      }} disabled={deleteLoading}
+                        className="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition disabled:opacity-60">
+                        {deleteLoading ? "Deleting…" : "Delete This + All Future Sessions"}
+                      </button>
+                      <button onClick={async () => {
+                        setDeleteLoading(true);
+                        const { data: { session } } = await supabase.auth.getSession();
+                        const token = session?.access_token;
+                        if (!token) { setDeleteLoading(false); return; }
+                        await fetch("/api/booking/delete", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({ appointment_id: viewAppt.id }),
+                        });
+                        setDeleteLoading(false); setDeleteConfirm(false); setViewAppt(null); fetchData();
+                      }} disabled={deleteLoading}
+                        className="w-full py-2.5 rounded-xl border border-red-300 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60">
+                        {deleteLoading ? "Deleting…" : "Delete This Session Only"}
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={async () => {
+                      setDeleteLoading(true);
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const token = session?.access_token;
+                      if (!token) { setDeleteLoading(false); return; }
+                      await fetch("/api/booking/delete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ appointment_id: viewAppt.id }),
+                      });
+                      setDeleteLoading(false); setDeleteConfirm(false); setViewAppt(null); fetchData();
+                    }} disabled={deleteLoading}
+                      className="w-full py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition disabled:opacity-60">
+                      {deleteLoading ? "Deleting…" : "Confirm Delete"}
+                    </button>
+                  )}
+                  <button onClick={() => setDeleteConfirm(false)} disabled={deleteLoading}
+                    className="w-full py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition disabled:opacity-60">
+                    Keep Session
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Availability Modal — only reachable when isViewingOwn */}
       {showAvail && (
