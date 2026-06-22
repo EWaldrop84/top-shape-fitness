@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import type { AppUser, Trainer } from "@/types";
+import type { AppUser, Trainer, TrainerWithName } from "@/types";
 import TrainerSchedule from "@/components/trainer/TrainerSchedule";
 
 interface TrainerPortalProps {
@@ -10,20 +10,40 @@ interface TrainerPortalProps {
 
 export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
   const [trainer, setTrainer] = useState<Trainer | null>(null);
+  const [allTrainers, setAllTrainers] = useState<TrainerWithName[]>([]);
   const [loading, setLoading] = useState(true);
 
   const firstName = user.first_name ?? user.email.split("@")[0];
 
   useEffect(() => {
-    supabase
-      .from("trainers")
-      .select("id, user_id, display_color, bio, is_active")
-      .eq("user_id", user.id)
-      .single()
-      .then(({ data }) => {
-        setTrainer((data as Trainer) ?? null);
-        setLoading(false);
-      });
+    async function load() {
+      const [ownRes, allRes] = await Promise.all([
+        supabase
+          .from("trainers")
+          .select("id, user_id, display_color, bio, is_active")
+          .eq("user_id", user.id)
+          .single(),
+        supabase
+          .from("trainers")
+          .select("id, user_id, display_color, bio, is_active, users(first_name, last_name)")
+          .eq("is_active", true),
+      ]);
+
+      setTrainer((ownRes.data as Trainer) ?? null);
+
+      const trainers: TrainerWithName[] = ((allRes.data ?? []) as any[]).map((t) => ({
+        id: t.id,
+        user_id: t.user_id,
+        display_color: t.display_color,
+        bio: t.bio,
+        is_active: t.is_active,
+        first_name: t.users?.first_name ?? null,
+        last_name: t.users?.last_name ?? null,
+      }));
+      setAllTrainers(trainers);
+      setLoading(false);
+    }
+    load();
   }, [user.id]);
 
   async function handleLogout() {
@@ -95,7 +115,10 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
       </header>
 
       <main className="flex-1 overflow-auto">
-        <TrainerSchedule trainerId={trainer.id} />
+        <TrainerSchedule
+          trainerId={trainer.id}
+          allTrainers={allTrainers}
+        />
       </main>
     </div>
   );

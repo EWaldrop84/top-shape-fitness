@@ -119,6 +119,11 @@ export interface Trainer {
   is_active: boolean;
 }
 
+export interface TrainerWithName extends Trainer {
+  first_name: string | null;
+  last_name: string | null;
+}
+
 export interface TrainerAppointment {
   id: string;
   client_id: string;

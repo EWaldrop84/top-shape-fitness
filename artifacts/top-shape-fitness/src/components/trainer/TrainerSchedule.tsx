@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import type { TrainerAppointment, AvailabilityBlock } from "@/types";
+import type { TrainerAppointment, AvailabilityBlock, TrainerWithName } from "@/types";
 
 interface TrainerScheduleProps {
-  trainerId: string;
+  trainerId: string;          // logged-in trainer's own ID — always used for inserts
+  allTrainers: TrainerWithName[];
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -39,19 +40,24 @@ function formatDateShort(d: Date): string {
 }
 
 const STATUS_STYLE: Record<string, { border: string; bg: string; text: string; label: string }> = {
-  scheduled:  { border: "border-l-[#1F73B1]", bg: "bg-blue-50",   text: "text-[#1F73B1]",  label: "Scheduled" },
-  completed:  { border: "border-l-emerald-500", bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
-  cancelled:  { border: "border-l-gray-300",  bg: "bg-gray-50",   text: "text-gray-500",   label: "Cancelled" },
-  no_show:    { border: "border-l-orange-400", bg: "bg-orange-50", text: "text-orange-600",  label: "No Show" },
-  forfeited:  { border: "border-l-rose-400",  bg: "bg-rose-50",   text: "text-rose-600",   label: "Forfeited" },
+  scheduled:  { border: "border-l-[#1F73B1]",     bg: "bg-blue-50",    text: "text-[#1F73B1]",   label: "Scheduled" },
+  completed:  { border: "border-l-emerald-500",    bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
+  cancelled:  { border: "border-l-gray-300",       bg: "bg-gray-50",    text: "text-gray-500",    label: "Cancelled" },
+  no_show:    { border: "border-l-orange-400",     bg: "bg-orange-50",  text: "text-orange-600",  label: "No Show"   },
+  forfeited:  { border: "border-l-rose-400",       bg: "bg-rose-50",    text: "text-rose-600",    label: "Forfeited" },
 };
 
 const EMPTY_AVAIL = { day_of_week: "mon" as const, start_time: "09:00", end_time: "17:00", is_recurring: true, specific_date: "" };
 
-export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
+function trainerDisplayName(t: TrainerWithName): string {
+  return [t.first_name, t.last_name].filter(Boolean).join(" ") || "Trainer";
+}
+
+export default function TrainerSchedule({ trainerId, allTrainers }: TrainerScheduleProps) {
   const today = new Date();
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(today));
   const [selectedDay, setSelectedDay] = useState<number>(today.getDay());
+  const [viewingTrainerId, setViewingTrainerId] = useState<string>(trainerId);
   const [appointments, setAppointments] = useState<TrainerAppointment[]>([]);
   const [availability, setAvailability] = useState<AvailabilityBlock[]>([]);
   const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
@@ -61,6 +67,8 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const isViewingOwn = viewingTrainerId === trainerId;
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const weekEnd = addDays(weekStart, 6);
@@ -69,21 +77,20 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
       supabase
         .from("appointments")
         .select("id, client_id, appointment_date, start_time, end_time, duration_minutes, status, notes")
-        .eq("trainer_id", trainerId)
+        .eq("trainer_id", viewingTrainerId)
         .gte("appointment_date", isoDate(weekStart))
         .lte("appointment_date", isoDate(weekEnd))
         .order("start_time", { ascending: true }),
       supabase
         .from("availability")
         .select("id, trainer_id, day_of_week, start_time, end_time, is_recurring, specific_date, is_active")
-        .eq("trainer_id", trainerId)
+        .eq("trainer_id", viewingTrainerId)
         .eq("is_active", true),
     ]);
 
     const appts = (apptsRes.data ?? []) as TrainerAppointment[];
     setAvailability((availRes.data ?? []) as AvailabilityBlock[]);
 
-    // Resolve client names
     const clientIds = [...new Set(appts.map((a) => a.client_id))];
     if (clientIds.length > 0) {
       const { data: clients } = await supabase
@@ -110,13 +117,14 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
 
     setAppointments(appts);
     setLoading(false);
-  }, [trainerId, weekStart]);
+  }, [viewingTrainerId, weekStart]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   async function handleSaveAvailability() {
     setSaving(true);
     setSaveError(null);
+    // INSERT always uses trainerId (own) — never viewingTrainerId
     const { error } = await supabase.from("availability").insert({
       trainer_id: trainerId,
       day_of_week: availForm.day_of_week,
@@ -130,6 +138,8 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
     if (error) { setSaveError(error.message); return; }
     setShowAvail(false);
     setAvailForm(EMPTY_AVAIL);
+    // If we saved our own availability but are viewing someone else, switch back
+    if (!isViewingOwn) setViewingTrainerId(trainerId);
     fetchData();
   }
 
@@ -146,10 +156,55 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Trainer selector tab strip */}
+      {allTrainers.length > 1 && (
+        <div className="bg-white border-b border-gray-100 px-4 py-2.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {allTrainers.map((t) => {
+              const isOwn = t.id === trainerId;
+              const isViewing = t.id === viewingTrainerId;
+              const name = t.first_name ?? trainerDisplayName(t);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setViewingTrainerId(t.id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    isViewing
+                      ? isOwn
+                        ? "bg-[#2A255D] text-white"
+                        : "bg-gray-600 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  {name}
+                  {isOwn && (
+                    <span className={`text-[10px] font-medium ${isViewing ? "opacity-60" : "text-gray-400"}`}>
+                      (me)
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Week header */}
       <div className="bg-white border-b border-gray-100 px-4 py-3">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold text-[#2A255D]">My Schedule</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[#2A255D]">
+              {isViewingOwn ? "My Schedule" : `${allTrainers.find(t => t.id === viewingTrainerId)?.first_name ?? "Trainer"}'s Schedule`}
+            </h2>
+            {!isViewingOwn && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-semibold uppercase tracking-wide">
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                </svg>
+                View Only
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setWeekStart(addDays(weekStart, -7)); setSelectedDay(0); }}
@@ -224,7 +279,12 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
                   {dayAppointments.map((appt) => {
                     const style = STATUS_STYLE[appt.status] ?? STATUS_STYLE.scheduled;
                     return (
-                      <div key={appt.id} className={`bg-white rounded-xl border border-gray-100 border-l-4 ${style.border} px-4 py-3 shadow-sm`}>
+                      <div
+                        key={appt.id}
+                        className={`bg-white rounded-xl border border-gray-100 border-l-4 ${style.border} px-4 py-3 shadow-sm transition ${
+                          !isViewingOwn ? "opacity-50" : ""
+                        }`}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="font-semibold text-[#2A255D] text-sm">{clientNameMap.get(appt.client_id) ?? "Client"}</p>
@@ -250,21 +310,25 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
             {/* Availability blocks */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">My Availability</p>
-                <button
-                  onClick={() => setShowAvail(true)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#2A255D] text-white text-xs font-semibold hover:bg-[#1e1a47] transition"
-                >
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                  Add
-                </button>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                  {isViewingOwn ? "My Availability" : "Their Availability"}
+                </p>
+                {isViewingOwn && (
+                  <button
+                    onClick={() => setShowAvail(true)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#2A255D] text-white text-xs font-semibold hover:bg-[#1e1a47] transition"
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                    Add
+                  </button>
+                )}
               </div>
               {availability.length === 0 ? (
                 <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
                   <p className="text-xs text-gray-400">No availability blocks set</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className={`space-y-2 ${!isViewingOwn ? "opacity-50" : ""}`}>
                   {availability.map((block) => (
                     <div key={block.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
                       <div>
@@ -278,12 +342,14 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
                         {block.is_recurring && (
                           <span className="text-[11px] text-[#06A29E] bg-[#06A29E]/10 px-2 py-0.5 rounded-full font-medium">Weekly</span>
                         )}
-                        <button
-                          onClick={() => handleDeleteAvailability(block.id)}
-                          className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
-                        >
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
-                        </button>
+                        {isViewingOwn && (
+                          <button
+                            onClick={() => handleDeleteAvailability(block.id)}
+                            className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -294,7 +360,7 @@ export default function TrainerSchedule({ trainerId }: TrainerScheduleProps) {
         )}
       </div>
 
-      {/* Add Availability Modal */}
+      {/* Add Availability Modal — only reachable when isViewingOwn */}
       {showAvail && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
