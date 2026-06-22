@@ -417,9 +417,21 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
   const [adjustPkg, setAdjustPkg] = useState<ClientPackage | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
+  const [sharedPkg, setSharedPkg] = useState<{
+    client_package_id: string;
+    sessions_remaining: number;
+    sessions_total: number;
+    sessions_used: number;
+    is_active: boolean;
+    purchase_date: string | null;
+    expiration_date: string | null;
+    expiration_waived: boolean;
+    packageName: string;
+    ownerName: string;
+  } | null>(null);
 
   const fetchClient = useCallback(async () => {
-    const [clientRes, apptRes] = await Promise.all([
+    const [clientRes, apptRes, shareRes] = await Promise.all([
       supabase
         .from("clients")
         .select(`
@@ -441,6 +453,21 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         .eq("client_id", clientId)
         .order("appointment_date", { ascending: false })
         .limit(20),
+      supabase
+        .from("client_package_shares")
+        .select(`
+          client_package_id,
+          client_packages!client_package_id (
+            id, sessions_total, sessions_remaining, sessions_used, is_active,
+            purchase_date, expiration_date, expiration_waived,
+            packages!package_id ( name ),
+            clients!owner_client_id (
+              users!clients_user_id_fkey ( first_name, last_name )
+            )
+          )
+        `)
+        .eq("shared_client_id", clientId)
+        .maybeSingle(),
     ]);
 
     if (clientRes.error) {
@@ -466,6 +493,29 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
       notes: c.notes ?? "",
     });
     setAppointments((apptRes.data as unknown as Appointment[]) ?? []);
+
+    // Resolve shared package if this client is a secondary on someone else's package
+    const shareRow = shareRes.data as any;
+    if (shareRow?.client_packages) {
+      const sp = shareRow.client_packages;
+      const ownerUsers = sp.clients?.users;
+      const ownerName = [ownerUsers?.first_name, ownerUsers?.last_name].filter(Boolean).join(" ") || "Unknown";
+      setSharedPkg({
+        client_package_id: shareRow.client_package_id,
+        sessions_remaining: sp.sessions_remaining,
+        sessions_total: sp.sessions_total,
+        sessions_used: sp.sessions_used,
+        is_active: sp.is_active,
+        purchase_date: sp.purchase_date,
+        expiration_date: sp.expiration_date,
+        expiration_waived: sp.expiration_waived,
+        packageName: sp.packages?.name ?? "Package",
+        ownerName,
+      });
+    } else {
+      setSharedPkg(null);
+    }
+
     setLoading(false);
   }, [clientId]);
 
@@ -611,7 +661,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
           </button>
         </div>
 
-        {sortedPkgs.length === 0 ? (
+        {sortedPkgs.length === 0 && !sharedPkg ? (
           <p className="text-sm text-gray-400 text-center py-4">No packages assigned yet.</p>
         ) : (
           <div className="space-y-3">
@@ -653,6 +703,43 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
                 </div>
               </div>
             ))}
+
+            {/* Shared package from another client */}
+            {sharedPkg && (
+              <div className={`rounded-lg border p-4 ${sharedPkg.is_active ? "border-[#1F73B1]/20 bg-[#1F73B1]/3" : "border-gray-100 bg-gray-50/50 opacity-70"}`}>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="font-semibold text-[#2A255D] text-sm">{sharedPkg.packageName}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1F73B1]/10 text-[#1F73B1] text-[10px] font-semibold tracking-wide">
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
+                        </svg>
+                        Shared — {sharedPkg.ownerName}'s Package
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`flex-shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-full ${sharedPkg.is_active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>
+                    {sharedPkg.is_active ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {([["Total", sharedPkg.sessions_total], ["Used", sharedPkg.sessions_used], ["Left", sharedPkg.sessions_remaining]] as [string, number][]).map(([label, val]) => (
+                    <div key={label} className="text-center bg-white rounded-lg p-2 border border-gray-100">
+                      <p className="text-xs text-gray-400">{label}</p>
+                      <p className={`text-lg font-bold ${label === "Left" && val <= 2 ? "text-orange-600" : "text-[#2A255D]"}`}>{val}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-gray-500">
+                  <span className="text-gray-400">Purchased:</span> {formatDate(sharedPkg.purchase_date)}
+                  <span className="mx-2 text-gray-200">·</span>
+                  <span className="text-gray-400">Expires:</span>{" "}
+                  {sharedPkg.expiration_waived ? <span className="text-emerald-600 font-medium">Waived</span> : formatDate(sharedPkg.expiration_date)}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

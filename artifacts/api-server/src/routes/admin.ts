@@ -174,14 +174,15 @@ adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) =
 
   const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 
-  // Fetch all scheduled, not-yet-deducted appointments
+  // Fetch all scheduled, not-yet-deducted appointments (include client_id for share resolution)
   const apptRes = await fetch(
     `${url}/rest/v1/appointments?status=eq.scheduled&session_deducted=eq.false` +
-    `&select=id,client_package_id,appointment_date,start_time`,
+    `&select=id,client_id,client_package_id,appointment_date,start_time`,
     { headers: hdrs },
   );
   const appointments = (await apptRes.json()) as {
-    id: string; client_package_id: string; appointment_date: string; start_time: string;
+    id: string; client_id: string; client_package_id: string | null;
+    appointment_date: string; start_time: string;
   }[];
 
   const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -191,9 +192,33 @@ adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) =
     // Only deduct if within 24 hours
     if (new Date(`${appt.appointment_date}T${appt.start_time}`) > cutoff) continue;
 
-    // Fetch package + client info in one join
+    // Resolve which package to deduct from:
+    // 1. Use appt.client_package_id if set
+    // 2. Otherwise look for client's own active package
+    // 3. Otherwise look for a shared package via client_package_shares
+    let resolvedPackageId = appt.client_package_id;
+    if (!resolvedPackageId) {
+      const ownRes = await fetch(
+        `${url}/rest/v1/client_packages?owner_client_id=eq.${appt.client_id}&is_active=eq.true&select=id&limit=1`,
+        { headers: hdrs },
+      );
+      const [ownPkg] = (await ownRes.json()) as { id: string }[];
+      if (ownPkg) {
+        resolvedPackageId = ownPkg.id;
+      } else {
+        const shareRes = await fetch(
+          `${url}/rest/v1/client_package_shares?shared_client_id=eq.${appt.client_id}&select=client_package_id&limit=1`,
+          { headers: hdrs },
+        );
+        const [share] = (await shareRes.json()) as { client_package_id: string }[];
+        if (share) resolvedPackageId = share.client_package_id;
+      }
+    }
+    if (!resolvedPackageId) continue; // no package found — skip
+
+    // Fetch package + owner info
     const pkgRes = await fetch(
-      `${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}` +
+      `${url}/rest/v1/client_packages?id=eq.${resolvedPackageId}` +
       `&select=sessions_remaining,sessions_used,owner_client_id,` +
       `clients!owner_client_id(user_id,users!clients_user_id_fkey(first_name,phone))`,
       { headers: hdrs },
@@ -209,14 +234,17 @@ adminRouter.post("/admin/deduct-sessions", async (req: Request, res: Response) =
     const newRemaining = pkg.sessions_remaining - 1;
     const now = new Date().toISOString();
 
-    // Deduct session from appointment and package simultaneously
+    // Stamp resolved package_id back onto appointment if it was missing, and mark deducted
+    const apptPatch: Record<string, unknown> = { session_deducted: true, deducted_at: now };
+    if (!appt.client_package_id) apptPatch.client_package_id = resolvedPackageId;
+
     await Promise.all([
       fetch(`${url}/rest/v1/appointments?id=eq.${appt.id}`, {
         method: "PATCH",
         headers: { ...hdrs, Prefer: "return=minimal" },
-        body: JSON.stringify({ session_deducted: true, deducted_at: now }),
+        body: JSON.stringify(apptPatch),
       }),
-      fetch(`${url}/rest/v1/client_packages?id=eq.${appt.client_package_id}`, {
+      fetch(`${url}/rest/v1/client_packages?id=eq.${resolvedPackageId}`, {
         method: "PATCH",
         headers: { ...hdrs, Prefer: "return=minimal" },
         body: JSON.stringify({
