@@ -5,8 +5,9 @@ import ClientManagement from "@/components/admin/ClientManagement";
 import AdminCalendar from "@/components/admin/AdminCalendar";
 import AdminPayroll from "@/components/admin/AdminPayroll";
 import AdminRevenue from "@/components/admin/AdminRevenue";
+import AdminTrainers from "@/components/admin/AdminTrainers";
 
-type AdminSection = "dashboard" | "clients" | "payroll" | "revenue";
+type AdminSection = "dashboard" | "clients" | "payroll" | "revenue" | "trainers";
 
 interface AdminDashboardProps {
   user: AppUser;
@@ -56,6 +57,20 @@ const NAV_ITEMS: { id: AdminSection; label: string; icon: React.ReactNode }[] = 
         <line x1="18" y1="20" x2="18" y2="10" />
         <line x1="12" y1="20" x2="12" y2="4" />
         <line x1="6" y1="20" x2="6" y2="14" />
+      </svg>
+    ),
+  },
+  {
+    id: "trainers",
+    label: "Trainer Management",
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87" />
+        <path d="M16 3.13a4 4 0 010 7.75" />
+        <line x1="19" y1="8" x2="19" y2="14" />
+        <line x1="22" y1="11" x2="16" y2="11" />
       </svg>
     ),
   },
@@ -248,6 +263,10 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
         ) : activeSection === "revenue" ? (
           <div className="flex-1 flex flex-col overflow-hidden">
             <AdminRevenue />
+          </div>
+        ) : activeSection === "trainers" ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <AdminTrainers />
           </div>
         ) : (
           <main className="flex-1 p-4 md:p-6">
