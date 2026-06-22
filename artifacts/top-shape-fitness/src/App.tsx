@@ -6,15 +6,17 @@ import AdminDashboard from "@/pages/AdminDashboard";
 import TrainerPortal from "@/pages/TrainerPortal";
 import ClientPortal from "@/pages/ClientPortal";
 import InstallPrompt from "@/components/InstallPrompt";
+import WaiverModal from "@/components/WaiverModal";
 
 type AuthState = "loading" | "unauthenticated" | "authenticated";
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [clientRecord, setClientRecord] = useState<{ id: string } | null>(null);
+  const [waiverPending, setWaiverPending] = useState(false);
 
   useEffect(() => {
-    // On mount, check for an existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         await loadUserProfile(session.user.id);
@@ -23,10 +25,13 @@ export default function App() {
       }
     });
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_OUT" || !session) {
         setCurrentUser(null);
+        setClientRecord(null);
+        setWaiverPending(false);
         setAuthState("unauthenticated");
       } else if (event === "SIGNED_IN" && session.user) {
         await loadUserProfile(session.user.id);
@@ -46,13 +51,39 @@ export default function App() {
       .single();
 
     if (error || !data) {
-      // No matching row in public.users — sign them out
       await supabase.auth.signOut();
       setAuthState("unauthenticated");
       return;
     }
 
     setCurrentUser(data as AppUser);
+
+    // For clients: fetch their client record and check for waiver
+    if (data.role === "client") {
+      const { data: clientRow } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (clientRow) {
+        setClientRecord(clientRow);
+
+        const { data: waiverRow, error: sigErr } = await supabase
+          .from("client_signatures")
+          .select("id")
+          .eq("client_id", clientRow.id)
+          .eq("document_type", "waiver")
+          .maybeSingle();
+
+        // Only block with waiver modal if the table exists (no error) and no signature found
+        setWaiverPending(!sigErr && !waiverRow);
+      } else {
+        setClientRecord(null);
+        setWaiverPending(false);
+      }
+    }
+
     setAuthState("authenticated");
   }
 
@@ -63,6 +94,8 @@ export default function App() {
 
   function handleLogout() {
     setCurrentUser(null);
+    setClientRecord(null);
+    setWaiverPending(false);
     setAuthState("unauthenticated");
   }
 
@@ -71,13 +104,20 @@ export default function App() {
       <div className="min-h-screen bg-[#2A255D] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-[#06A29E] flex items-center justify-center">
-            <svg
-              className="animate-spin w-5 h-5 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg className="animate-spin w-5 h-5 text-white" viewBox="0 0 24 24" fill="none">
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
             </svg>
           </div>
           <p className="text-white/50 text-sm">Loading…</p>
@@ -96,11 +136,40 @@ export default function App() {
 
   switch (currentUser.role) {
     case "admin":
-      return <><AdminDashboard user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
+      return (
+        <>
+          <AdminDashboard user={currentUser} onLogout={handleLogout} />
+          <InstallPrompt />
+        </>
+      );
     case "trainer":
-      return <><TrainerPortal user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
-    case "client":
-      return <><ClientPortal user={currentUser} onLogout={handleLogout} /><InstallPrompt /></>;
+      return (
+        <>
+          <TrainerPortal user={currentUser} onLogout={handleLogout} />
+          <InstallPrompt />
+        </>
+      );
+    case "client": {
+      // Block portal until waiver is signed
+      if (waiverPending && clientRecord) {
+        return (
+          <WaiverModal
+            clientId={clientRecord.id}
+            clientName={
+              [currentUser.first_name, currentUser.last_name].filter(Boolean).join(" ") ||
+              currentUser.email
+            }
+            onComplete={() => setWaiverPending(false)}
+          />
+        );
+      }
+      return (
+        <>
+          <ClientPortal user={currentUser} onLogout={handleLogout} />
+          <InstallPrompt />
+        </>
+      );
+    }
     default:
       return (
         <div className="min-h-screen bg-[#2A255D] flex items-center justify-center px-4">

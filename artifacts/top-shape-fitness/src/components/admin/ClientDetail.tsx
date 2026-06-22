@@ -1,6 +1,20 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ClientWithRelations, Package, ClientPackage, Appointment } from "@/types";
+import TrainingAgreementModal from "@/components/TrainingAgreementModal";
+
+type SessionType = "½ Hour" | "Hourly" | "Individual" | "45 min" | "Group";
+const SESSION_TYPES: SessionType[] = ["½ Hour", "Hourly", "Individual", "45 min", "Group"];
+
+interface AgreementData {
+  clientPackageId: string;
+  packageName: string;
+  sessionsTotal: number;
+  sessionType: SessionType;
+  amountPaidCents: number;
+  beginningDate: string;
+  endingDate: string;
+}
 
 interface ClientDetailProps {
   clientId: string;
@@ -14,6 +28,12 @@ function formatDate(d: string | null | undefined) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function oneYearFromToday() {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function addDays(dateStr: string, days: number) {
@@ -36,18 +56,21 @@ function statusColor(status: string) {
 interface AssignModalProps {
   clientId: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (data: AgreementData) => void;
 }
+
 function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) {
   const [packages, setPackages] = useState<Package[]>([]);
   const [allClients, setAllClients] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({
     package_id: "",
     purchase_date: today(),
-    expiration_date: "",
+    expiration_date: oneYearFromToday(),
     is_shared: false,
     shared_with_client_id: "",
     sessions_override: "",
+    sessionType: "Hourly" as SessionType,
+    amountPaid: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +99,7 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
       if (k === "package_id" || k === "purchase_date") {
         const pkg = packages.find((p) => p.id === (k === "package_id" ? v : f.package_id));
         if (pkg && next.purchase_date) {
-          next.expiration_date = addDays(next.purchase_date, pkg.duration_days);
+          next.expiration_date = addDays(next.purchase_date as string, pkg.duration_days);
         }
       }
       return next;
@@ -93,21 +116,43 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
     if (!form.package_id) { setError("Please select a package."); return; }
     setError(null);
     setLoading(true);
-    const { error } = await supabase.from("client_packages").insert({
-      package_id: form.package_id,
-      owner_client_id: clientId,
-      sessions_total: sessionsTotal,
-      sessions_remaining: sessionsTotal,
-      sessions_used: 0,
-      purchase_date: form.purchase_date || null,
-      expiration_date: form.expiration_date || null,
-      expiration_waived: false,
-      is_active: true,
-      is_shared: form.is_shared,
-      shared_with_client_id: form.is_shared && form.shared_with_client_id ? form.shared_with_client_id : null,
+
+    const { data: newPkg, error: insertErr } = await supabase
+      .from("client_packages")
+      .insert({
+        package_id: form.package_id,
+        owner_client_id: clientId,
+        sessions_total: sessionsTotal,
+        sessions_remaining: sessionsTotal,
+        sessions_used: 0,
+        purchase_date: form.purchase_date || null,
+        expiration_date: form.expiration_date || null,
+        expiration_waived: false,
+        is_active: true,
+        is_shared: form.is_shared,
+        shared_with_client_id: form.is_shared && form.shared_with_client_id ? form.shared_with_client_id : null,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr) {
+      setError(insertErr.message);
+      setLoading(false);
+      return;
+    }
+
+    const amountPaidCents = form.amountPaid ? Math.round(parseFloat(form.amountPaid) * 100) : 0;
+
+    onSuccess({
+      clientPackageId: newPkg.id,
+      packageName: selectedPkg?.name ?? "Package",
+      sessionsTotal,
+      sessionType: form.sessionType,
+      amountPaidCents,
+      beginningDate: form.purchase_date,
+      endingDate: form.expiration_date,
     });
-    if (error) setError(error.message);
-    else { onSuccess(); onClose(); }
+    onClose();
     setLoading(false);
   }
 
@@ -125,6 +170,7 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Package selector */}
           <div>
             <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Package <span className="text-red-500">*</span></label>
             <select
@@ -156,7 +202,7 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Purchase Date</label>
+              <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Beginning Date</label>
               <input
                 type="date"
                 value={form.purchase_date}
@@ -165,7 +211,7 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Expiration Date</label>
+              <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Ending Date</label>
               <input
                 type="date"
                 value={form.expiration_date}
@@ -175,6 +221,45 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
             </div>
           </div>
 
+          {/* Session Type */}
+          <div>
+            <label className="block text-xs font-medium text-[#2A255D] mb-2">Session Type</label>
+            <div className="flex flex-wrap gap-2">
+              {SESSION_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, sessionType: t }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                    form.sessionType === t
+                      ? "bg-[#2A255D] text-white border-[#2A255D]"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-[#2A255D]/40"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount Paid */}
+          <div>
+            <label className="block text-xs font-medium text-[#2A255D] mb-1.5">Amount Paid ($)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.amountPaid}
+                onChange={(e) => setForm((f) => ({ ...f, amountPaid: e.target.value }))}
+                placeholder="0.00"
+                className="w-full pl-7 pr-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition"
+              />
+            </div>
+          </div>
+
+          {/* Shared package */}
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <button
               type="button"
@@ -201,6 +286,14 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
               </select>
             </div>
           )}
+
+          {/* Agreement notice */}
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-50 border border-blue-100">
+            <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p className="text-xs text-blue-700">After assigning the package, the client will be prompted to sign the Training Agreement.</p>
+          </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -323,9 +416,9 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
   const [showAssign, setShowAssign] = useState(false);
   const [adjustPkg, setAdjustPkg] = useState<ClientPackage | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
 
   const fetchClient = useCallback(async () => {
-    // Three separate queries to avoid RLS join issues on the users table
     const [clientRes, apptRes] = await Promise.all([
       supabase
         .from("clients")
@@ -358,18 +451,13 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
 
     const clientRow = clientRes.data as any;
 
-    // Separately fetch the user profile to sidestep RLS join restrictions
     const { data: userData } = await supabase
       .from("users")
       .select("id, email, first_name, last_name, phone, is_active, created_at, role")
       .eq("id", clientRow.user_id)
       .single();
 
-    const c: ClientWithRelations = {
-      ...clientRow,
-      users: userData ?? null,
-    };
-
+    const c: ClientWithRelations = { ...clientRow, users: userData ?? null };
     setClient(c);
     setEditForm({
       first_name: c.users?.first_name ?? "",
@@ -377,14 +465,11 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
       phone: c.users?.phone ?? "",
       notes: c.notes ?? "",
     });
-
     setAppointments((apptRes.data as unknown as Appointment[]) ?? []);
     setLoading(false);
   }, [clientId]);
 
-  useEffect(() => {
-    fetchClient();
-  }, [fetchClient]);
+  useEffect(() => { fetchClient(); }, [fetchClient]);
 
   async function handleSaveEdit() {
     if (!client) return;
@@ -609,7 +694,11 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         <AssignPackageModal
           clientId={clientId}
           onClose={() => setShowAssign(false)}
-          onSuccess={fetchClient}
+          onSuccess={(data) => {
+            setShowAssign(false);
+            fetchClient();
+            setAgreementData(data);
+          }}
         />
       )}
       {adjustPkg && (
@@ -617,6 +706,22 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
           pkg={adjustPkg}
           onClose={() => setAdjustPkg(null)}
           onSuccess={fetchClient}
+        />
+      )}
+      {agreementData && (
+        <TrainingAgreementModal
+          clientId={clientId}
+          clientName={fullName}
+          clientPhone={client.users?.phone ?? ""}
+          clientPackageId={agreementData.clientPackageId}
+          packageName={agreementData.packageName}
+          sessionsTotal={agreementData.sessionsTotal}
+          sessionType={agreementData.sessionType}
+          amountPaidCents={agreementData.amountPaidCents}
+          beginningDate={agreementData.beginningDate}
+          endingDate={agreementData.endingDate}
+          onComplete={() => setAgreementData(null)}
+          onDismiss={() => setAgreementData(null)}
         />
       )}
     </div>
