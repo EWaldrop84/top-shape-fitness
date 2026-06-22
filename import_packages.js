@@ -107,11 +107,25 @@ async function main() {
     if (c.users) clientLookup[`${c.users.first_name} ${c.users.last_name}`.trim().toLowerCase()] = c.id;
   }
 
-  // Get/create package template
-  let { data: pkg } = await supabase.from('packages').select('id').eq('name', 'Custom Package').single();
-  if (!pkg) {
-    const { data: newPkg } = await supabase.from('packages').insert({ name: 'Custom Package', description: 'Imported from Session Log', sessions_count: 1 }).select('id').single();
-    pkg = newPkg;
+  // Get/create one package template per distinct session duration.
+  // The live `packages` schema only has: name, session_count, duration_days, is_active —
+  // there is no per-session minutes column, so we encode duration in the template name.
+  const durations = [...new Set(PACKAGES.map((p) => p.duration_minutes))];
+  const pkgByDuration = {};
+  for (const dur of durations) {
+    const name = `Imported - ${dur} Min`;
+    let { data: pkg } = await supabase.from('packages').select('id').eq('name', name).maybeSingle();
+    if (!pkg) {
+      const { data: newPkg, error: pkgErr } = await supabase
+        .from('packages')
+        .insert({ name, session_count: 1, duration_days: 180, is_active: false })
+        .select('id')
+        .single();
+      if (pkgErr) { console.error('Failed to create template "' + name + '": ' + pkgErr.message); process.exit(1); }
+      pkg = newPkg;
+    }
+    pkgByDuration[dur] = pkg.id;
+    console.log('Template ready: ' + name);
   }
 
   const results = { inserted: 0, skipped: 0, missing: [], errors: 0 };
@@ -129,28 +143,32 @@ async function main() {
     const trainerId = trainerMap[p.trainer.toLowerCase()];
     if (!trainerId) { console.log('No trainer: ' + p.trainer); results.errors++; continue; }
 
+    const packageId = pkgByDuration[p.duration_minutes];
+    if (!packageId) { console.log('No template for duration: ' + p.duration_minutes); results.errors++; continue; }
+
     const { data: existing } = await supabase.from('client_packages').select('id').eq('owner_client_id', clientId).limit(1);
     if (existing && existing.length > 0) { console.log('Skip (existing): ' + p.client); results.skipped++; continue; }
 
-    let startDate = null;
+    let purchaseDate = null;
     if (p.package_start_date) {
       const parts = p.package_start_date.split('/');
-      if (parts.length === 3) startDate = `${parts[2].length===2?'20'+parts[2]:parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
-      else startDate = p.package_start_date || null;
+      if (parts.length === 3) purchaseDate = `${parts[2].length===2?'20'+parts[2]:parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+      else purchaseDate = p.package_start_date || null;
     }
+
+    const remaining = Math.ceil(p.sessions_remaining);
+    const total = p.sessions_total || remaining;
 
     const { error } = await supabase.from('client_packages').insert({
       owner_client_id: clientId,
-      package_id: pkg.id,
-      sessions_total: p.sessions_total || Math.ceil(p.sessions_remaining),
-      sessions_remaining: Math.ceil(p.sessions_remaining),
-      sessions_used: (p.sessions_total||0) - Math.ceil(p.sessions_remaining),
-      purchase_price_cents: p.package_cost_cents,
-      per_session_price_cents: p.per_session_price_cents,
-      duration_minutes: p.duration_minutes,
-      start_date: startDate,
+      package_id: packageId,
+      sessions_total: total,
+      sessions_remaining: remaining,
+      sessions_used: Math.max(0, total - remaining),
+      price_paid_cents: p.package_cost_cents,
+      purchase_date: purchaseDate,
+      expiration_waived: true,
       is_active: true,
-      notes: 'Imported from Session Log. Trainer: ' + p.trainer + '. Last session: ' + (p.last_session||'N/A')
     });
 
     if (error) { console.log('Error ' + p.client + ': ' + error.message); results.errors++; }
