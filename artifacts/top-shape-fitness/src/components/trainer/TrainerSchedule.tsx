@@ -39,12 +39,20 @@ function formatDateShort(d: Date): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-const STATUS_STYLE: Record<string, { border: string; bg: string; text: string; label: string }> = {
-  scheduled:  { border: "border-l-[#1F73B1]",     bg: "bg-blue-50",    text: "text-[#1F73B1]",   label: "Scheduled" },
-  completed:  { border: "border-l-emerald-500",    bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
-  cancelled:  { border: "border-l-gray-300",       bg: "bg-gray-50",    text: "text-gray-500",    label: "Cancelled" },
-  no_show:    { border: "border-l-orange-400",     bg: "bg-orange-50",  text: "text-orange-600",  label: "No Show"   },
-  forfeited:  { border: "border-l-rose-400",       bg: "bg-rose-50",    text: "text-rose-600",    label: "Forfeited" },
+const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  scheduled:  { bg: "bg-blue-50",    text: "text-[#1F73B1]",   label: "Scheduled" },
+  completed:  { bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
+  cancelled:  { bg: "bg-gray-50",    text: "text-gray-500",    label: "Cancelled" },
+  no_show:    { bg: "bg-orange-50",  text: "text-orange-600",  label: "No Show"   },
+  forfeited:  { bg: "bg-rose-50",    text: "text-rose-600",    label: "Forfeited" },
+};
+
+const TRAINER_HEX: Record<string, string> = {
+  cyan:   "#06A29E",
+  banana: "#F6C026",
+  grape:  "#8B5CF6",
+  basil:  "#16A34A",
+  tomato: "#F97316",
 };
 
 const EMPTY_AVAIL = { day_of_week: "mon" as const, start_time: "09:00", end_time: "17:00", is_recurring: true, specific_date: "" };
@@ -71,6 +79,8 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const isViewingOwn = viewingTrainerId === trainerId;
+  const viewingTrainer = allTrainers.find(t => t.id === viewingTrainerId);
+  const viewingTrainerHex = TRAINER_HEX[viewingTrainer?.display_color ?? "cyan"] ?? TRAINER_HEX.cyan;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -285,9 +295,10 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
                       <div
                         key={appt.id}
                         onClick={() => { if (isViewingOwn) { setViewAppt(appt); setDeleteConfirm(false); setDeleteLoading(false); } }}
-                        className={`bg-white rounded-xl border border-gray-100 border-l-4 ${style.border} px-4 py-3 shadow-sm transition ${
+                        className={`bg-white rounded-xl border border-gray-100 border-l-4 px-4 py-3 shadow-sm transition ${
                           !isViewingOwn ? "opacity-50 cursor-default" : "cursor-pointer hover:shadow-md"
                         }`}
+                        style={{ borderLeftColor: viewingTrainerHex }}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>

@@ -4,5 +4,6 @@
 - [Pricing migration](pricing-migration.md) — packages.price_cents and trainers.hourly_rate_cents added in migration 004; run in Supabase SQL Editor before revenue metrics show real dollar values.
 - [Revenue metrics pattern](revenue-metrics.md) — gross/delivered/liability/labor computed client-side from one client_packages query (all rows, not filtered to is_active); no aggregate endpoint needed.
 - [App branding](app-branding.md) — official name is "Shape Studio" everywhere; never revert to "Top Shape Fitness" or "Top Shape" in UI strings.
+- [Trainer color map](trainer-colors.md) — canonical display_color keys + hex values for all 5 trainers; used in AdminCalendar, AdminPayroll, TrainerSchedule.
 - [Document signing system](document-signing.md) — WaiverModal + TrainingAgreementModal; migration 008 must be run; Drive edge function needs GOOGLE_SERVICE_ACCOUNT_KEY secret + supabase functions deploy.
 - [Package import](package-import.md) — import_packages.js schema mapping; packages.session_count not sessions_count; client_packages has no per-session/duration/notes cols; "Imported - N Min" inactive templates.

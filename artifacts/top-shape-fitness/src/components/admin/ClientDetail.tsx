@@ -430,6 +430,45 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
     ownerName: string;
   } | null>(null);
 
+  // Package sharing state (for clients who OWN a package)
+  const [packageShares, setPackageShares] = useState<{
+    id: string; shared_client_id: string; client_package_id: string; name: string;
+  }[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
+  const [showAddShare, setShowAddShare] = useState<string | null>(null);
+  const [shareSearch, setShareSearch] = useState("");
+  const [allClients, setAllClients] = useState<{ id: string; name: string }[]>([]);
+  const [allClientsLoaded, setAllClientsLoaded] = useState(false);
+  const [removingShare, setRemovingShare] = useState<string | null>(null);
+  const [addingShare, setAddingShare] = useState(false);
+
+  // Link-to-shared-package state (for clients with no package of their own)
+  const [removingOwnShare, setRemovingOwnShare] = useState(false);
+  const [showLinkShared, setShowLinkShared] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
+  const [allOwners, setAllOwners] = useState<{
+    clientPackageId: string; ownerName: string; sessionsRemaining: number; packageName: string;
+  }[]>([]);
+  const [ownersLoaded, setOwnersLoaded] = useState(false);
+
+  async function fetchShares(packageIds: string[]) {
+    if (packageIds.length === 0) { setPackageShares([]); return; }
+    setSharesLoading(true);
+    const { data } = await supabase
+      .from("client_package_shares")
+      .select("id, shared_client_id, client_package_id, clients!shared_client_id(users!clients_user_id_fkey(first_name, last_name))")
+      .in("client_package_id", packageIds);
+    setPackageShares(
+      (data ?? []).map((r: any) => ({
+        id: r.id,
+        shared_client_id: r.shared_client_id,
+        client_package_id: r.client_package_id,
+        name: [r.clients?.users?.first_name, r.clients?.users?.last_name].filter(Boolean).join(" ") || "Unknown",
+      }))
+    );
+    setSharesLoading(false);
+  }
+
   const fetchClient = useCallback(async () => {
     const [clientRes, apptRes, shareRes] = await Promise.all([
       supabase
@@ -516,8 +555,12 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
       setSharedPkg(null);
     }
 
+    // Fetch which clients are sharing packages owned by this client
+    const ownedPkgIds = (clientRow.client_packages ?? []).map((p: any) => p.id as string);
+    fetchShares(ownedPkgIds);
+
     setLoading(false);
-  }, [clientId]);
+  }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchClient(); }, [fetchClient]);
 

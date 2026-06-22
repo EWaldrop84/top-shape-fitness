@@ -13,6 +13,15 @@ const TRAINER_COLORS: Record<string, { header: string; dot: string; apptBg: stri
   banana: { header: "bg-yellow-50", dot: "bg-yellow-400", apptBg: "bg-yellow-100", apptText: "text-yellow-900" },
   grape:  { header: "bg-purple-50", dot: "bg-purple-500", apptBg: "bg-purple-100", apptText: "text-purple-900" },
   basil:  { header: "bg-green-50",  dot: "bg-green-600",  apptBg: "bg-green-100",  apptText: "text-green-900"  },
+  tomato: { header: "bg-orange-50", dot: "bg-orange-500", apptBg: "bg-orange-100", apptText: "text-orange-900" },
+};
+
+const TRAINER_HEX: Record<string, string> = {
+  cyan:   "#06A29E",
+  banana: "#F6C026",
+  grape:  "#8B5CF6",
+  basil:  "#16A34A",
+  tomato: "#F97316",
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -515,6 +524,7 @@ export default function AdminCalendar() {
             {/* Trainer columns */}
             {trainers.map(({ trainer, firstName, lastName }) => {
               const color = TRAINER_COLORS[trainer.display_color ?? "cyan"] ?? TRAINER_COLORS.cyan;
+              const trainerHex = TRAINER_HEX[trainer.display_color ?? "cyan"] ?? TRAINER_HEX.cyan;
               const dayAppts = getDayAppts(trainer.id, selISO);
               const dayBlocks = getDayBlocks(trainer.id, selISO);
               return (
@@ -578,20 +588,19 @@ export default function AdminCalendar() {
                     {dayAppts.map((appt) => {
                       const topIdx = timeToSlotIndex(appt.start_time);
                       const heightPx = (appt.duration_minutes / 30) * SLOT_HEIGHT - 4;
-                      const style = STATUS_STYLES[appt.status] ?? STATUS_STYLES.scheduled;
                       const isConsult = appt.session_type === "consultation";
                       const isRec = appt.is_recurring;
                       return (
                         <div key={appt.id}
-                          style={{ position: "absolute", top: topIdx * SLOT_HEIGHT + 2, height: heightPx, left: 3, right: 3, zIndex: 10 }}
-                          className={`${style.bg} border ${style.border} rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden hover:opacity-80 transition`}
+                          style={{ position: "absolute", top: topIdx * SLOT_HEIGHT + 2, height: heightPx, left: 3, right: 3, zIndex: 10, backgroundColor: trainerHex }}
+                          className="rounded-lg px-1.5 py-1 cursor-pointer overflow-hidden hover:opacity-90 transition"
                           onClick={() => { setViewAppt(appt); setActionResult(null); setDeleteConfirm(false); setDeleteLoading(false); }}>
-                          <p className={`text-[11px] font-semibold leading-tight truncate ${style.text}`}>{clientNameMap.get(appt.client_id) ?? "Client"}</p>
+                          <p className="text-[11px] font-semibold leading-tight truncate text-white">{clientNameMap.get(appt.client_id) ?? "Client"}</p>
                           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                            <p className={`text-[10px] leading-tight ${style.text} opacity-70`}>{appt.duration_minutes}min · {formatTime(appt.start_time)}</p>
-                            {isConsult && <span className="text-[9px] font-bold bg-amber-400/30 text-amber-700 rounded px-1 leading-tight">CONSULT</span>}
+                            <p className="text-[10px] leading-tight text-white opacity-80">{appt.duration_minutes}min · {formatTime(appt.start_time)}</p>
+                            {isConsult && <span className="text-[9px] font-bold bg-white/30 text-white rounded px-1 leading-tight">CONSULT</span>}
                             {isRec && !isConsult && (
-                              <svg className="w-2.5 h-2.5 opacity-60 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <svg className="w-2.5 h-2.5 opacity-70 flex-shrink-0 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 014-4h14" />
                                 <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 01-4 4H3" />
                               </svg>
