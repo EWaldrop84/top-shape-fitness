@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="90" fill="#2A255D"/>
+  <rect x="58"  y="210" width="30" height="80"  rx="7" fill="#FFFFFF" opacity="0.6"/>
+  <rect x="98"  y="180" width="30" height="130" rx="7" fill="#FFFFFF" opacity="0.8"/>
+  <rect x="138" y="155" width="30" height="170" rx="7" fill="#FFFFFF"/>
+  <rect x="178" y="175" width="30" height="120" rx="7" fill="#FFFFFF" opacity="0.9"/>
+  <rect x="304" y="175" width="30" height="120" rx="7" fill="#06A29E" opacity="0.9"/>
+  <rect x="344" y="155" width="30" height="170" rx="7" fill="#06A29E"/>
+  <rect x="384" y="180" width="30" height="130" rx="7" fill="#06A29E" opacity="0.8"/>
+  <rect x="424" y="210" width="30" height="80"  rx="7" fill="#06A29E" opacity="0.6"/>
+  <path d="M 215 210 C 237 188, 259 232, 281 210 C 303 188, 281 232, 303 210" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" fill="none"/>
+  <path d="M 215 255 C 237 233, 259 277, 281 255 C 303 233, 281 277, 303 255" stroke="#06A29E" stroke-width="20" stroke-linecap="round" fill="none"/>
+  <path d="M 215 300 C 237 278, 259 322, 281 300 C 303 278, 281 322, 303 300" stroke="#5B9FD4" stroke-width="16" stroke-linecap="round" fill="none"/>
+</svg>
