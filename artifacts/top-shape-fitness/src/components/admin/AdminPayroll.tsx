@@ -64,7 +64,7 @@ function fmtHours(h: number): string {
 }
 
 const TRAINER_PALETTE: Record<string, string> = {
-  cyan: "#06A29E", banana: "#F6C026", grape: "#8B5CF6", basil: "#16A34A", tomato: "#F97316",
+  cyan: "#06A29E", banana: "#F6C026", grape: "#8B5CF6", basil: "#16A34A", tomato: "#EF4444", tangerine: "#F28C28",
 };
 
 // ── Component ────────────────────────────────────────────────────────────────

@@ -10,10 +10,11 @@ description: Canonical display_color key → hex mapping for all 5 trainers; use
 | Eric    | cyan          | #06A29E  |
 | Patrick | banana        | #F6C026  |
 | Emma    | grape         | #8B5CF6  |
-| Nick    | tomato        | #F97316  |
+| Nick    | tomato        | #EF4444  |
 | Jack    | basil         | #16A34A  |
+| —       | tangerine     | #F28C28  |
 
-**Why:** These are the canonical hex values the owner specified. banana and grape hex values differ from older defaults (#E8B84B, #7C3AED) — always use the values above.
+**Why:** These are the canonical hex values the owner specified. banana and grape hex values differ from older defaults (#E8B84B, #7C3AED). tomato = #EF4444 (red), tangerine = #F28C28 (warm orange, distinct from tomato) — always use the values above.
 
 **How to apply:**
 - `TRAINER_HEX` constant defined in AdminCalendar.tsx and TrainerSchedule.tsx

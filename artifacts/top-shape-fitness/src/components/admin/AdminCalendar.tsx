@@ -9,19 +9,21 @@ const HOUR_END = 18;
 const TOTAL_SLOTS = (HOUR_END - HOUR_START) * 2;
 
 const TRAINER_COLORS: Record<string, { header: string; dot: string; apptBg: string; apptText: string }> = {
-  cyan:   { header: "bg-cyan-50",   dot: "bg-cyan-500",   apptBg: "bg-cyan-100",   apptText: "text-cyan-900"   },
-  banana: { header: "bg-yellow-50", dot: "bg-yellow-400", apptBg: "bg-yellow-100", apptText: "text-yellow-900" },
-  grape:  { header: "bg-purple-50", dot: "bg-purple-500", apptBg: "bg-purple-100", apptText: "text-purple-900" },
-  basil:  { header: "bg-green-50",  dot: "bg-green-600",  apptBg: "bg-green-100",  apptText: "text-green-900"  },
-  tomato: { header: "bg-orange-50", dot: "bg-orange-500", apptBg: "bg-orange-100", apptText: "text-orange-900" },
+  cyan:      { header: "bg-cyan-50",   dot: "bg-cyan-500",   apptBg: "bg-cyan-100",   apptText: "text-cyan-900"   },
+  banana:    { header: "bg-yellow-50", dot: "bg-yellow-400", apptBg: "bg-yellow-100", apptText: "text-yellow-900" },
+  grape:     { header: "bg-purple-50", dot: "bg-purple-500", apptBg: "bg-purple-100", apptText: "text-purple-900" },
+  basil:     { header: "bg-green-50",  dot: "bg-green-600",  apptBg: "bg-green-100",  apptText: "text-green-900"  },
+  tomato:    { header: "bg-red-50",    dot: "bg-red-400",    apptBg: "bg-red-100",    apptText: "text-red-900"    },
+  tangerine: { header: "bg-orange-50", dot: "bg-orange-400", apptBg: "bg-orange-100", apptText: "text-orange-900" },
 };
 
 const TRAINER_HEX: Record<string, string> = {
-  cyan:   "#06A29E",
-  banana: "#F6C026",
-  grape:  "#8B5CF6",
-  basil:  "#16A34A",
-  tomato: "#F97316",
+  cyan:      "#06A29E",
+  banana:    "#F6C026",
+  grape:     "#8B5CF6",
+  basil:     "#16A34A",
+  tomato:    "#EF4444",
+  tangerine: "#F28C28",
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {

@@ -48,11 +48,12 @@ const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> 
 };
 
 const TRAINER_HEX: Record<string, string> = {
-  cyan:   "#06A29E",
-  banana: "#F6C026",
-  grape:  "#8B5CF6",
-  basil:  "#16A34A",
-  tomato: "#F97316",
+  cyan:      "#06A29E",
+  banana:    "#F6C026",
+  grape:     "#8B5CF6",
+  basil:     "#16A34A",
+  tomato:    "#EF4444",
+  tangerine: "#F28C28",
 };
 
 const EMPTY_AVAIL = { day_of_week: "mon" as const, start_time: "09:00", end_time: "17:00", is_recurring: true, specific_date: "" };
