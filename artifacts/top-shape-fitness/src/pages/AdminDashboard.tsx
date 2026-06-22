@@ -6,8 +6,9 @@ import AdminCalendar from "@/components/admin/AdminCalendar";
 import AdminPayroll from "@/components/admin/AdminPayroll";
 import AdminRevenue from "@/components/admin/AdminRevenue";
 import AdminTrainers from "@/components/admin/AdminTrainers";
+import AdminSettings from "@/components/admin/AdminSettings";
 
-type AdminSection = "dashboard" | "clients" | "payroll" | "revenue" | "trainers";
+type AdminSection = "dashboard" | "clients" | "payroll" | "revenue" | "trainers" | "settings";
 
 interface AdminDashboardProps {
   user: AppUser;
@@ -71,6 +72,16 @@ const NAV_ITEMS: { id: AdminSection; label: string; icon: React.ReactNode }[] = 
         <path d="M16 3.13a4 4 0 010 7.75" />
         <line x1="19" y1="8" x2="19" y2="14" />
         <line x1="22" y1="11" x2="16" y2="11" />
+      </svg>
+    ),
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
       </svg>
     ),
   },
@@ -267,6 +278,10 @@ export default function AdminDashboard({ user, onLogout }: AdminDashboardProps) 
         ) : activeSection === "trainers" ? (
           <div className="flex-1 flex flex-col overflow-hidden">
             <AdminTrainers />
+          </div>
+        ) : activeSection === "settings" ? (
+          <div className="flex-1 flex flex-col overflow-y-auto">
+            <AdminSettings />
           </div>
         ) : (
           <main className="flex-1 p-4 md:p-6">
