@@ -531,7 +531,7 @@ export default function AdminCalendar() {
                 <div key={trainer.id} className="w-[152px] flex-shrink-0 border-r border-gray-100 last:border-r-0">
                   <div className={`h-10 border-b border-gray-100 flex items-center justify-center gap-1.5 px-2 ${color.header}`}>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color.dot}`} />
-                    <span className="text-xs font-semibold text-[#2A255D] truncate">{firstName}</span>
+                    <span className="text-xs font-semibold truncate" style={{ color: trainerHex }}>{firstName}</span>
                   </div>
 
                   <div className="relative bg-white" style={{ height: TOTAL_SLOTS * SLOT_HEIGHT }}>
