@@ -2,58 +2,15 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AppUser, Trainer } from "@/types";
 import TrainerSchedule from "@/components/trainer/TrainerSchedule";
-import TrainerClients from "@/components/trainer/TrainerClients";
-import TrainerPayroll from "@/components/trainer/TrainerPayroll";
-
-type Tab = "schedule" | "clients" | "payroll";
 
 interface TrainerPortalProps {
   user: AppUser;
   onLogout: () => void;
 }
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  {
-    id: "schedule",
-    label: "Schedule",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-        <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
-      </svg>
-    ),
-  },
-  {
-    id: "clients",
-    label: "Clients",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 00-3-3.87" />
-        <path d="M16 3.13a4 4 0 010 7.75" />
-      </svg>
-    ),
-  },
-  {
-    id: "payroll",
-    label: "Payroll",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    ),
-  },
-];
-
 export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("schedule");
 
   const firstName = user.first_name ?? user.email.split("@")[0];
 
@@ -74,7 +31,6 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
     onLogout();
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -86,7 +42,6 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
     );
   }
 
-  // ── No trainer profile ────────────────────────────────────────────────────
   if (!trainer) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center">
@@ -109,10 +64,8 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
     );
   }
 
-  // ── Main portal ───────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
       <header className="bg-[#2A255D] text-white px-4 pt-4 pb-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
@@ -141,30 +94,9 @@ export default function TrainerPortal({ user, onLogout }: TrainerPortalProps) {
         </button>
       </header>
 
-      {/* Tab content — scrollable area above bottom nav */}
-      <main className="flex-1 overflow-auto pb-20">
-        {tab === "schedule" && <TrainerSchedule trainerId={trainer.id} />}
-        {tab === "clients"  && <TrainerClients  trainerId={trainer.id} />}
-        {tab === "payroll"  && <TrainerPayroll  trainerId={trainer.id} />}
+      <main className="flex-1 overflow-auto">
+        <TrainerSchedule trainerId={trainer.id} />
       </main>
-
-      {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 shadow-[0_-1px_8px_rgba(0,0,0,0.06)] flex z-40">
-        {TABS.map((t) => {
-          const active = t.id === tab;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 transition ${active ? "text-[#2A255D]" : "text-gray-400 hover:text-gray-600"}`}
-            >
-              <span className={active ? "text-[#2A255D]" : "text-gray-400"}>{t.icon}</span>
-              <span className={`text-[11px] font-semibold leading-none ${active ? "text-[#2A255D]" : "text-gray-400"}`}>{t.label}</span>
-              {active && <span className="absolute bottom-0 w-8 h-0.5 rounded-full bg-[#06A29E]" />}
-            </button>
-          );
-        })}
-      </nav>
     </div>
   );
 }
