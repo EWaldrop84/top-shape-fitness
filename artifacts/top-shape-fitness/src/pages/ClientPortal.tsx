@@ -2,9 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AppUser, ClientPackage } from "@/types";
 import ClientSessions from "@/components/client/ClientSessions";
-import ClientBooking from "@/components/client/ClientBooking";
 
-type ClientTab = "sessions" | "book" | "package";
+type ClientTab = "sessions" | "package";
 
 interface ClientPortalProps {
   user: AppUser;
@@ -27,17 +26,6 @@ const TABS: { id: ClientTab; label: string; icon: React.ReactNode }[] = [
         <line x1="8" y1="2" x2="8" y2="6" />
         <line x1="3" y1="10" x2="21" y2="10" />
         <path d="M9 14l2 2 4-4" />
-      </svg>
-    ),
-  },
-  {
-    id: "book",
-    label: "Book",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="16" />
-        <line x1="8" y1="12" x2="16" y2="12" />
       </svg>
     ),
   },
@@ -145,14 +133,7 @@ export default function ClientPortal({ user, onLogout }: ClientPortalProps) {
         ) : (
           <>
             {tab === "sessions" && (
-              <ClientSessions clientId={clientId} onBook={() => setTab("book")} />
-            )}
-            {tab === "book" && (
-              <ClientBooking
-                clientId={clientId}
-                activePackage={activePackage}
-                onBooked={() => { loadClientData(); setTab("sessions"); }}
-              />
+              <ClientSessions clientId={clientId} />
             )}
             {tab === "package" && (
               <div className="px-4 py-5 max-w-lg mx-auto">
