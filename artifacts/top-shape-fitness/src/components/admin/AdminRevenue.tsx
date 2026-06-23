@@ -92,6 +92,7 @@ export default function AdminRevenue() {
   const [waivedIds, setWaivedIds] = useState<Set<string>>(new Set());
   const [waving, setWaving] = useState<string | null>(null);
   const [waiveError, setWaiveError] = useState<string | null>(null);
+  const [manualLaborInput, setManualLaborInput] = useState("");
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -218,6 +219,10 @@ export default function AdminRevenue() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
   const activePkgs = allPackages.filter((p) => p.is_active);
+  const manualLaborCents = manualLaborInput !== "" ? Math.max(0, Math.round(parseFloat(manualLaborInput) * 100)) : null;
+  const effectiveLaborCents = manualLaborCents !== null ? manualLaborCents : metrics.laborCost;
+  const effectiveLaborPct = metrics.grossCollected > 0 ? (effectiveLaborCents / metrics.grossCollected) * 100 : 0;
+  const effectiveNetRevenue = metrics.grossCollected - effectiveLaborCents;
   const expiringSoon = allPackages.filter(
     (p) => p.is_active && p.expiration_date && !p.expiration_waived && !waivedIds.has(p.id) && daysUntil(p.expiration_date) <= 30,
   );
@@ -269,7 +274,7 @@ export default function AdminRevenue() {
             </span>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+        <div className="grid grid-cols-3 divide-x divide-gray-100">
           <MetricCell
             loading={loading}
             label="Gross Collected"
@@ -292,28 +297,49 @@ export default function AdminRevenue() {
             accent="#1F73B1"
             highlight
           />
-          <MetricCell
-            loading={loading}
-            label="Labor Cost"
-            value={fmtMoney(metrics.laborCost)}
-            sub="payroll this period"
-            accent="#6B7280"
-          />
-          <MetricCell
-            loading={loading}
-            label="Labor %"
-            value={metrics.hasPricing ? `${metrics.laborPct.toFixed(1)}%` : "—"}
-            sub="of gross collected"
-            accent={metrics.laborPct > 40 ? "#DC2626" : "#06A29E"}
-          />
-          <MetricCell
-            loading={loading}
-            label="Net Revenue"
-            value={metrics.hasPricing ? fmtMoney(metrics.netRevenue) : "—"}
-            sub="collected − labor"
-            accent={metrics.netRevenue >= 0 ? "#06A29E" : "#DC2626"}
-            large
-          />
+        </div>
+      </div>
+
+      {/* ── Profitability ─────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <h2 className="font-semibold text-sm text-[#2A255D]">Profitability</h2>
+          <span className="text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">session only — not saved</span>
+        </div>
+        <div className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">Labor Cost (manual entry)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium select-none">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  placeholder="0.00"
+                  value={manualLaborInput}
+                  onChange={(e) => setManualLaborInput(e.target.value)}
+                  className="w-full pl-7 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-[#2A255D] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 flex-shrink-0">
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2.5 min-w-[120px]">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Net Revenue</p>
+                <p className={`text-xl font-bold mt-0.5 ${effectiveNetRevenue >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {metrics.hasPricing || manualLaborInput ? fmtMoney(effectiveNetRevenue) : "—"}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">gross − labor</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2.5 min-w-[100px]">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Labor %</p>
+                <p className={`text-xl font-bold mt-0.5 ${effectiveLaborPct > 40 ? "text-red-600" : "text-[#06A29E]"}`}>
+                  {metrics.hasPricing || manualLaborInput ? `${effectiveLaborPct.toFixed(1)}%` : "—"}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">of gross revenue</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
