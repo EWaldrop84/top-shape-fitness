@@ -2,10 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Appointment } from "@/types";
 
-const ERIC_USER_ID = "9c94baea-31aa-4a35-ad28-3a83955d34f1";
-
 interface ClientSessionsProps {
   clientId: string;
+  onBook?: () => void;
 }
 
 const STATUS_STYLE = {
@@ -30,37 +29,26 @@ function formatTime(t: string) {
   return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
-export default function ClientSessions({ clientId }: ClientSessionsProps) {
+export default function ClientSessions({ clientId, onBook }: ClientSessionsProps) {
   const [appointments, setAppointments] = useState<(Appointment & { trainerName: string })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ericTrainerId, setEricTrainerId] = useState<string | null>(null);
   const [confirmAppt, setConfirmAppt] = useState<(Appointment & { trainerName: string }) | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    const { data: appts } = await supabase
+      .from("appointments")
+      .select("id, client_id, trainer_id, client_package_id, appointment_date, start_time, end_time, duration_minutes, status, session_deducted, cancellation_within_24hr, forfeiture_waived, cancelled_at, notes")
+      .eq("client_id", clientId)
+      .order("appointment_date", { ascending: false })
+      .limit(60);
 
-    const [apptsRes, ericRes] = await Promise.all([
-      supabase
-        .from("appointments")
-        .select("id, client_id, trainer_id, client_package_id, appointment_date, start_time, end_time, duration_minutes, status, session_deducted, cancellation_within_24hr, forfeiture_waived, cancelled_at, notes")
-        .eq("client_id", clientId)
-        .order("appointment_date", { ascending: false })
-        .limit(60),
-      supabase
-        .from("trainers")
-        .select("id")
-        .eq("user_id", ERIC_USER_ID)
-        .maybeSingle(),
-    ]);
+    const apptList = (appts ?? []) as Appointment[];
+    if (apptList.length === 0) { setAppointments([]); setLoading(false); return; }
 
-    setEricTrainerId(ericRes.data?.id ?? null);
-
-    const appts = (apptsRes.data ?? []) as Appointment[];
-    if (appts.length === 0) { setAppointments([]); setLoading(false); return; }
-
-    const trainerIds = [...new Set(appts.map((a) => a.trainer_id))];
+    const trainerIds = [...new Set(apptList.map((a) => a.trainer_id))];
     const { data: trainers } = await supabase.from("trainers").select("id, user_id").in("id", trainerIds);
     const userIds = (trainers ?? []).map((t: any) => t.user_id);
     const { data: users } = await supabase.from("users").select("id, first_name, last_name").in("id", userIds);
@@ -72,7 +60,7 @@ export default function ClientSessions({ clientId }: ClientSessionsProps) {
       tNameMap.set(t.id, u ? [u.first_name, u.last_name].filter(Boolean).join(" ") || "Trainer" : "Trainer");
     }
 
-    setAppointments(appts.map((a) => ({ ...a, trainerName: tNameMap.get(a.trainer_id) ?? "Trainer" })));
+    setAppointments(apptList.map((a) => ({ ...a, trainerName: tNameMap.get(a.trainer_id) ?? "Trainer" })));
     setLoading(false);
   }, [clientId]);
 
@@ -121,37 +109,37 @@ export default function ClientSessions({ clientId }: ClientSessionsProps) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Upcoming Sessions</p>
           {upcoming.length === 0 ? (
             <div className="bg-white rounded-xl border border-dashed border-gray-200 p-6 text-center">
-              <p className="text-sm text-gray-500">No upcoming sessions scheduled</p>
+              <p className="text-sm text-gray-500 mb-3">No upcoming sessions scheduled</p>
+              {onBook && (
+                <button onClick={onBook} className="text-sm font-semibold text-[#06A29E] hover:underline">
+                  Book a session →
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
-              {upcoming.map((appt) => {
-                const canCancel = ericTrainerId !== null && appt.trainer_id === ericTrainerId;
-                return (
-                  <div key={appt.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#2A255D]">{formatDate(appt.appointment_date)}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {formatTime(appt.start_time)} · {appt.duration_minutes} min
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">with {appt.trainerName}</p>
-                      </div>
-                      <span className="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">
-                        Upcoming
-                      </span>
+              {upcoming.map((appt) => (
+                <div key={appt.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-[#2A255D]">{formatDate(appt.appointment_date)}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">
+                        {formatTime(appt.start_time)} · {appt.duration_minutes} min
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">with {appt.trainerName}</p>
                     </div>
-                    {canCancel && (
-                      <button
-                        onClick={() => setConfirmAppt(appt)}
-                        className="mt-3 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition"
-                      >
-                        Cancel Session
-                      </button>
-                    )}
+                    <span className="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">
+                      Upcoming
+                    </span>
                   </div>
-                );
-              })}
+                  <button
+                    onClick={() => setConfirmAppt(appt)}
+                    className="mt-3 w-full py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition"
+                  >
+                    Cancel Session
+                  </button>
+                </div>
+              ))}
             </div>
           )}
           {cancelError && (

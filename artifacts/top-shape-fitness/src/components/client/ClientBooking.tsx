@@ -1,16 +1,37 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ClientPackage } from "@/types";
+
+const ERIC_USER_ID = "9c94baea-31aa-4a35-ad28-3a83955d34f1";
+
+const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+const TRAINER_HEX: Record<string, string> = {
+  navy:      "#2A255D",
+  teal:      "#06A29E",
+  blue:      "#1F73B1",
+  purple:    "#8B5CF6",
+  green:     "#10B981",
+  tomato:    "#EF4444",
+  tangerine: "#F28C28",
+  pink:      "#EC4899",
+  amber:     "#F59E0B",
+};
+
+interface Trainer {
+  id: string;
+  user_id: string;
+  display_color: string;
+  name: string;
+}
 
 interface ClientBookingProps {
   clientId: string;
   activePackage: ClientPackage | null;
   onBooked: () => void;
 }
-
-const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function isoDate(d: Date) {
   return d.toISOString().split("T")[0];
@@ -28,7 +49,6 @@ function formatTime(t: string) {
   return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`;
 }
 
-// Get next 30 dates across all 7 days of the week
 function getAvailableDates(): Date[] {
   const dates: Date[] = [];
   const d = new Date();
@@ -40,17 +60,53 @@ function getAvailableDates(): Date[] {
   return dates;
 }
 
-export default function ClientBooking({ clientId, activePackage, onBook: _onBook, onBooked }: ClientBookingProps & { onBook?: () => void }) {
+export default function ClientBooking({ clientId, activePackage, onBooked }: ClientBookingProps) {
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [loadingTrainers, setLoadingTrainers] = useState(true);
+  const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<30 | 45 | 60 | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [booking, setBooking] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ date: string; time: string; duration: number } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ date: string; time: string; duration: number; trainerName: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSlots = useCallback(async (date: Date) => {
+  useEffect(() => {
+    async function loadTrainers() {
+      setLoadingTrainers(true);
+      const { data: trainerRows } = await supabase
+        .from("trainers")
+        .select("id, user_id, display_color")
+        .neq("user_id", ERIC_USER_ID);
+
+      if (!trainerRows || trainerRows.length === 0) { setLoadingTrainers(false); return; }
+
+      const userIds = trainerRows.map((t: any) => t.user_id);
+      const { data: userRows } = await supabase
+        .from("users")
+        .select("id, first_name, last_name")
+        .in("id", userIds);
+
+      const uMap = new Map((userRows ?? []).map((u: any) => [u.id, u]));
+      setTrainers(
+        trainerRows.map((t: any) => {
+          const u = uMap.get(t.user_id) as any;
+          return {
+            id: t.id,
+            user_id: t.user_id,
+            display_color: t.display_color ?? "navy",
+            name: u ? [u.first_name, u.last_name].filter(Boolean).join(" ") || "Trainer" : "Trainer",
+          };
+        })
+      );
+      setLoadingTrainers(false);
+    }
+    loadTrainers();
+  }, []);
+
+  const fetchSlots = useCallback(async (date: Date, trainerId: string) => {
     setLoadingSlots(true);
     setAvailableSlots([]);
     setSelectedTime(null);
@@ -63,18 +119,20 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
     const [availRes, apptRes] = await Promise.all([
       supabase
         .from("availability")
-        .select("trainer_id, start_time, end_time")
+        .select("start_time, end_time")
+        .eq("trainer_id", trainerId)
         .eq("is_active", true)
         .or(`and(is_recurring.eq.true,day_of_week.eq.${dayKey}),and(is_recurring.eq.false,specific_date.eq.${dateStr})`),
       supabase
         .from("appointments")
-        .select("trainer_id, start_time, end_time")
+        .select("start_time, end_time")
         .eq("appointment_date", dateStr)
+        .eq("trainer_id", trainerId)
         .not("status", "in", "(cancelled,forfeited)"),
     ]);
 
-    const avail = (availRes.data ?? []) as { trainer_id: string; start_time: string; end_time: string }[];
-    const booked = (apptRes.data ?? []) as { trainer_id: string; start_time: string; end_time: string }[];
+    const avail = (availRes.data ?? []) as { start_time: string; end_time: string }[];
+    const booked = (apptRes.data ?? []) as { start_time: string; end_time: string }[];
 
     const slots: string[] = [];
     for (let slot = 5 * 60; slot <= 17 * 60 + 30; slot += 30) {
@@ -83,16 +141,17 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
       const slotTime = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
       const slotEnd30 = addMinutes(slotTime, 30);
 
-      const hasTrainer = avail.some((a) => {
+      const hasWindow = avail.some((a) => {
         const avS = a.start_time.slice(0, 5);
         const avE = a.end_time.slice(0, 5);
-        if (slotTime < avS || slotEnd30 > avE) return false;
-        return !booked.some(
-          (b) => b.trainer_id === a.trainer_id && !(b.end_time.slice(0, 5) <= slotTime || b.start_time.slice(0, 5) >= slotEnd30)
-        );
+        return slotTime >= avS && slotEnd30 <= avE;
       });
+      if (!hasWindow) continue;
 
-      if (hasTrainer) slots.push(slotTime);
+      const conflict = booked.some(
+        (b) => !(b.end_time.slice(0, 5) <= slotTime || b.start_time.slice(0, 5) >= slotEnd30)
+      );
+      if (!conflict) slots.push(slotTime);
     }
 
     setAvailableSlots(slots);
@@ -100,7 +159,7 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
   }, []);
 
   async function handleBook() {
-    if (!selectedDate || !selectedTime || !selectedDuration || !activePackage) return;
+    if (!selectedDate || !selectedTime || !selectedDuration || !activePackage || !selectedTrainer) return;
     setBooking(true);
     setError(null);
 
@@ -108,33 +167,35 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
     const dayKey = DAY_KEYS[selectedDate.getDay()];
     const endTime = addMinutes(selectedTime, selectedDuration);
 
-    // Find available trainer for this slot + duration
+    // Re-verify the slot is still open
     const [availRes, apptRes] = await Promise.all([
       supabase
         .from("availability")
-        .select("trainer_id, start_time, end_time")
+        .select("start_time, end_time")
+        .eq("trainer_id", selectedTrainer.id)
         .eq("is_active", true)
         .or(`and(is_recurring.eq.true,day_of_week.eq.${dayKey}),and(is_recurring.eq.false,specific_date.eq.${dateStr})`),
       supabase
         .from("appointments")
-        .select("trainer_id, start_time, end_time")
+        .select("start_time, end_time")
         .eq("appointment_date", dateStr)
+        .eq("trainer_id", selectedTrainer.id)
         .not("status", "in", "(cancelled,forfeited)"),
     ]);
 
-    const avail = (availRes.data ?? []) as { trainer_id: string; start_time: string; end_time: string }[];
-    const booked = (apptRes.data ?? []) as { trainer_id: string; start_time: string; end_time: string }[];
+    const avail = (availRes.data ?? []) as { start_time: string; end_time: string }[];
+    const booked = (apptRes.data ?? []) as { start_time: string; end_time: string }[];
 
-    let trainerId: string | null = null;
-    for (const a of avail) {
-      if (selectedTime < a.start_time.slice(0, 5) || endTime > a.end_time.slice(0, 5)) continue;
-      const conflict = booked.some(
-        (b) => b.trainer_id === a.trainer_id && !(b.end_time.slice(0, 5) <= selectedTime || b.start_time.slice(0, 5) >= endTime)
-      );
-      if (!conflict) { trainerId = a.trainer_id; break; }
-    }
+    const hasWindow = avail.some((a) => {
+      const avS = a.start_time.slice(0, 5);
+      const avE = a.end_time.slice(0, 5);
+      return selectedTime >= avS && endTime <= avE;
+    });
+    const conflict = booked.some(
+      (b) => !(b.end_time.slice(0, 5) <= selectedTime || b.start_time.slice(0, 5) >= endTime)
+    );
 
-    if (!trainerId) {
+    if (!hasWindow || conflict) {
       setError("This slot is no longer available. Please choose another time.");
       setBooking(false);
       return;
@@ -148,7 +209,7 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        trainer_id: trainerId,
+        trainer_id: selectedTrainer.id,
         client_id: clientId,
         client_package_id: activePackage.id,
         appointment_date: dateStr,
@@ -165,7 +226,7 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
       return;
     }
 
-    setConfirmation({ date: dateStr, time: selectedTime, duration: selectedDuration });
+    setConfirmation({ date: dateStr, time: selectedTime, duration: selectedDuration, trainerName: selectedTrainer.name });
   }
 
   // No active package
@@ -179,13 +240,13 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
         </div>
         <h3 className="font-bold text-[#2A255D] text-base mb-2">No Sessions Remaining</h3>
         <p className="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">
-          Please contact Top Shape Fitness to renew your package before booking a new session.
+          Please contact Shape Studio to renew your package before booking a new session.
         </p>
       </div>
     );
   }
 
-  // Confirmation screen
+  // Booking confirmed
   if (confirmation) {
     return (
       <div className="px-4 py-8 max-w-lg mx-auto text-center">
@@ -199,9 +260,17 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
           {new Date(confirmation.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
         </p>
         <p className="text-sm text-gray-500 mb-1">{formatTime(confirmation.time)} · {confirmation.duration} minutes</p>
+        <p className="text-sm text-gray-500 mb-1">with {confirmation.trainerName.split(" ")[0]}</p>
         <p className="text-xs text-gray-400 mt-4">Sessions remaining: {activePackage.sessions_remaining}</p>
         <button
-          onClick={() => { setConfirmation(null); setSelectedDate(null); setSelectedTime(null); setSelectedDuration(null); onBooked(); }}
+          onClick={() => {
+            setConfirmation(null);
+            setSelectedTrainer(null);
+            setSelectedDate(null);
+            setSelectedTime(null);
+            setSelectedDuration(null);
+            onBooked();
+          }}
           className="mt-6 px-6 py-2.5 rounded-xl bg-[#06A29E] text-white text-sm font-semibold hover:bg-[#048e8a] transition"
         >
           View My Sessions
@@ -225,36 +294,96 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
         </p>
       </div>
 
-      {/* Step 1: Date selection */}
+      {/* Step 0: Select trainer */}
       <div className="mb-6">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Select a Date</p>
-        <div className="overflow-x-auto -mx-4 px-4">
-          <div className="flex gap-2 pb-2" style={{ width: "max-content" }}>
-            {availableDates.map((date) => {
-              const iso = isoDate(date);
-              const isSelected = selectedDate && isoDate(selectedDate) === iso;
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Select a Trainer</p>
+        {loadingTrainers ? (
+          <div className="flex items-center justify-center py-6">
+            <svg className="animate-spin w-5 h-5 text-[#06A29E]" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {trainers.map((trainer) => {
+              const hex = TRAINER_HEX[trainer.display_color] ?? "#2A255D";
+              const isSelected = selectedTrainer?.id === trainer.id;
               return (
                 <button
-                  key={iso}
-                  onClick={() => { setSelectedDate(date); fetchSlots(date); setSelectedTime(null); setSelectedDuration(null); }}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl border transition flex-shrink-0 ${
-                    isSelected ? "bg-[#2A255D] border-[#2A255D] text-white" : "bg-white border-gray-200 text-gray-700 hover:border-[#06A29E]"
+                  key={trainer.id}
+                  onClick={() => {
+                    setSelectedTrainer(trainer);
+                    setSelectedDate(null);
+                    setAvailableSlots([]);
+                    setSelectedTime(null);
+                    setSelectedDuration(null);
+                    setError(null);
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition text-left ${
+                    isSelected
+                      ? "border-[#2A255D] bg-[#2A255D]/5"
+                      : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
-                  <span className={`text-[10px] font-semibold uppercase ${isSelected ? "text-white/70" : "text-gray-400"}`}>
-                    {DAY_NAMES[date.getDay()]}
+                  <div
+                    className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-xs"
+                    style={{ backgroundColor: hex }}
+                  >
+                    {trainer.name.charAt(0)}
+                  </div>
+                  <span className={`text-sm font-semibold flex-1 ${isSelected ? "text-[#2A255D]" : "text-gray-700"}`}>
+                    {trainer.name.split(" ")[0]}
                   </span>
-                  <span className="text-base font-bold leading-none">{date.getDate()}</span>
-                  <span className={`text-[10px] ${isSelected ? "text-white/70" : "text-gray-400"}`}>{MONTH_NAMES[date.getMonth()]}</span>
+                  {isSelected && (
+                    <svg className="w-4 h-4 text-[#06A29E] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                 </button>
               );
             })}
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Step 2: Time slots */}
-      {selectedDate && (
+      {/* Step 1: Select date */}
+      {selectedTrainer && (
+        <div className="mb-6">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Select a Date</p>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <div className="flex gap-2 pb-2" style={{ width: "max-content" }}>
+              {availableDates.map((date) => {
+                const iso = isoDate(date);
+                const isSelected = selectedDate && isoDate(selectedDate) === iso;
+                return (
+                  <button
+                    key={iso}
+                    onClick={() => {
+                      setSelectedDate(date);
+                      fetchSlots(date, selectedTrainer.id);
+                    }}
+                    className={`flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-xl border transition flex-shrink-0 ${
+                      isSelected
+                        ? "bg-[#2A255D] border-[#2A255D] text-white"
+                        : "bg-white border-gray-200 text-gray-700 hover:border-[#06A29E]"
+                    }`}
+                  >
+                    <span className={`text-[10px] font-semibold uppercase ${isSelected ? "text-white/70" : "text-gray-400"}`}>
+                      {DAY_NAMES[date.getDay()]}
+                    </span>
+                    <span className="text-base font-bold leading-none">{date.getDate()}</span>
+                    <span className={`text-[10px] ${isSelected ? "text-white/70" : "text-gray-400"}`}>{MONTH_NAMES[date.getMonth()]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Select time */}
+      {selectedDate && selectedTrainer && (
         <div className="mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Available Times</p>
           {loadingSlots ? (
@@ -288,7 +417,7 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
         </div>
       )}
 
-      {/* Step 3: Duration */}
+      {/* Step 3: Select duration */}
       {selectedTime && (
         <div className="mb-6">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Session Duration</p>
@@ -316,10 +445,14 @@ export default function ClientBooking({ clientId, activePackage, onBook: _onBook
       )}
 
       {/* Step 4: Confirm */}
-      {selectedDate && selectedTime && selectedDuration && (
+      {selectedDate && selectedTime && selectedDuration && selectedTrainer && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Booking Summary</p>
           <div className="space-y-2 mb-4">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Trainer</span>
+              <span className="font-medium text-[#2A255D]">{selectedTrainer.name.split(" ")[0]}</span>
+            </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Date</span>
               <span className="font-medium text-[#2A255D]">
