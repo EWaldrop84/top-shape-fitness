@@ -141,6 +141,36 @@ function AssignPackageModal({ clientId, onClose, onSuccess }: AssignModalProps) 
       return;
     }
 
+    // Write to client_package_shares if sharing is enabled
+    if (form.is_shared && form.shared_with_client_id) {
+      await supabase
+        .from("client_package_shares")
+        .delete()
+        .eq("client_package_id", newPkg.id)
+        .eq("shared_client_id", form.shared_with_client_id);
+      await supabase.from("client_package_shares").insert({
+        client_package_id: newPkg.id,
+        shared_client_id: form.shared_with_client_id,
+      });
+    }
+
+    // Move any existing shares on this owner's OLD packages to the new package.
+    // This ensures secondary clients follow automatically when the owner renews.
+    // NOTE: Will Fort → Liz Fort (shared_client_id: caf52f87-9738-451e-9c9b-5e4afcb280a7)
+    // Create that initial share once via "Add Shared Client" on Will's package card.
+    // After that this migration keeps Liz's share pointing to Will's latest package.
+    const { data: oldPkgs } = await supabase
+      .from("client_packages")
+      .select("id")
+      .eq("owner_client_id", clientId)
+      .neq("id", newPkg.id);
+    if (oldPkgs && oldPkgs.length > 0) {
+      await supabase
+        .from("client_package_shares")
+        .update({ client_package_id: newPkg.id })
+        .in("client_package_id", oldPkgs.map((p: { id: string }) => p.id));
+    }
+
     const amountPaidCents = form.amountPaid ? Math.round(parseFloat(form.amountPaid) * 100) : 0;
 
     onSuccess({
@@ -417,6 +447,12 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
   const [adjustPkg, setAdjustPkg] = useState<ClientPackage | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [agreementData, setAgreementData] = useState<AgreementData | null>(null);
+  const [editingPkg, setEditingPkg] = useState<string | null>(null);
+  const [pkgEditForm, setPkgEditForm] = useState({
+    sessions_total: 0, sessions_remaining: 0, price_paid: "",
+    duration_minutes: 60, purchase_date: "", expiration_date: "", expiration_waived: false,
+  });
+  const [pkgEditSaving, setPkgEditSaving] = useState(false);
   const [sharedPkg, setSharedPkg] = useState<{
     client_package_id: string;
     sessions_remaining: number;
@@ -478,6 +514,7 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
           client_packages!client_packages_owner_client_id_fkey (
             id, package_id, owner_client_id, sessions_total, sessions_remaining, sessions_used,
             purchase_date, expiration_date, expiration_waived, is_active, is_shared, shared_with_client_id,
+            price_paid_cents, duration_minutes,
             packages!package_id ( id, name, session_count, duration_days, is_active )
           )
         `)
@@ -589,6 +626,96 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
     await supabase.from("client_packages").update({ expiration_waived: !pkg.expiration_waived }).eq("id", pkg.id);
     await fetchClient();
     setToggling(null);
+  }
+
+  async function handleAddShare(packageId: string, sharedClientId: string) {
+    setAddingShare(true);
+    await supabase.from("client_package_shares").delete()
+      .eq("client_package_id", packageId).eq("shared_client_id", sharedClientId);
+    await supabase.from("client_package_shares").insert({ client_package_id: packageId, shared_client_id: sharedClientId });
+    setShowAddShare(null);
+    setShareSearch("");
+    await fetchClient();
+    setAddingShare(false);
+  }
+
+  async function handleRemoveShare(shareId: string) {
+    setRemovingShare(shareId);
+    await supabase.from("client_package_shares").delete().eq("id", shareId);
+    await fetchClient();
+    setRemovingShare(null);
+  }
+
+  async function handleLinkShared(masterPackageId: string) {
+    if (!client) return;
+    await supabase.from("client_package_shares").delete()
+      .eq("client_package_id", masterPackageId).eq("shared_client_id", client.id);
+    await supabase.from("client_package_shares").insert({ client_package_id: masterPackageId, shared_client_id: client.id });
+    setShowLinkShared(false);
+    setLinkSearch("");
+    await fetchClient();
+  }
+
+  async function handleRemoveOwnShare() {
+    if (!client || !sharedPkg) return;
+    setRemovingOwnShare(true);
+    await supabase.from("client_package_shares").delete()
+      .eq("client_package_id", sharedPkg.client_package_id).eq("shared_client_id", client.id);
+    setRemovingOwnShare(false);
+    await fetchClient();
+  }
+
+  async function loadAllClients() {
+    if (allClientsLoaded) return;
+    const { data } = await supabase
+      .from("clients")
+      .select("id, users!user_id(first_name, last_name, email)")
+      .neq("id", clientId);
+    setAllClients(
+      ((data ?? []) as any[]).map((c) => ({
+        id: c.id,
+        name: [c.users?.first_name, c.users?.last_name].filter(Boolean).join(" ") || c.users?.email || c.id,
+      }))
+    );
+    setAllClientsLoaded(true);
+  }
+
+  async function loadOwners() {
+    if (ownersLoaded) return;
+    const { data } = await supabase
+      .from("client_packages")
+      .select("id, sessions_remaining, packages!package_id(name), clients!owner_client_id(users!clients_user_id_fkey(first_name, last_name))")
+      .eq("is_active", true)
+      .gt("sessions_remaining", 0);
+    setAllOwners(
+      ((data ?? []) as any[]).map((p) => ({
+        clientPackageId: p.id,
+        ownerName: [p.clients?.users?.first_name, p.clients?.users?.last_name].filter(Boolean).join(" ") || "Unknown",
+        sessionsRemaining: p.sessions_remaining,
+        packageName: p.packages?.name ?? "Package",
+      }))
+    );
+    setOwnersLoaded(true);
+  }
+
+  async function handlePkgEditSave() {
+    if (!editingPkg) return;
+    setPkgEditSaving(true);
+    const sessions_used = Math.max(0, pkgEditForm.sessions_total - pkgEditForm.sessions_remaining);
+    const price_paid_cents = pkgEditForm.price_paid ? Math.round(parseFloat(pkgEditForm.price_paid) * 100) : 0;
+    await supabase.from("client_packages").update({
+      sessions_total: pkgEditForm.sessions_total,
+      sessions_remaining: pkgEditForm.sessions_remaining,
+      sessions_used,
+      price_paid_cents,
+      duration_minutes: pkgEditForm.duration_minutes,
+      purchase_date: pkgEditForm.purchase_date || null,
+      expiration_date: pkgEditForm.expiration_waived ? null : (pkgEditForm.expiration_date || null),
+      expiration_waived: pkgEditForm.expiration_waived,
+    }).eq("id", editingPkg);
+    setEditingPkg(null);
+    await fetchClient();
+    setPkgEditSaving(false);
   }
 
   if (loading) {
@@ -716,34 +843,132 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
                     <p className="text-xs text-gray-400 mt-0.5">{pkg.is_active ? "Active" : "Inactive"}{pkg.is_shared ? " · Shared" : ""}</p>
                   </div>
                   {pkg.is_active && (
-                    <button onClick={() => setAdjustPkg(pkg)} className="flex-shrink-0 px-2.5 py-1 rounded-lg border border-[#2A255D]/20 text-[11px] font-medium text-[#2A255D] hover:bg-[#2A255D]/5 transition">
-                      Adjust
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setAdjustPkg(pkg)} className="flex-shrink-0 px-2.5 py-1 rounded-lg border border-[#2A255D]/20 text-[11px] font-medium text-[#2A255D] hover:bg-[#2A255D]/5 transition">
+                        Adjust
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingPkg(pkg.id);
+                          setPkgEditForm({
+                            sessions_total: pkg.sessions_total,
+                            sessions_remaining: pkg.sessions_remaining,
+                            price_paid: pkg.price_paid_cents ? (pkg.price_paid_cents / 100).toFixed(2) : "",
+                            duration_minutes: pkg.duration_minutes ?? 60,
+                            purchase_date: pkg.purchase_date ?? "",
+                            expiration_date: pkg.expiration_date ?? "",
+                            expiration_waived: pkg.expiration_waived,
+                          });
+                        }}
+                        className="flex-shrink-0 px-2.5 py-1 rounded-lg border border-gray-200 text-[11px] font-medium text-gray-500 hover:bg-gray-50 transition flex items-center gap-1"
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Edit
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  {[["Total", pkg.sessions_total], ["Used", pkg.sessions_used], ["Left", pkg.sessions_remaining]].map(([label, val]) => (
-                    <div key={label} className="text-center bg-white rounded-lg p-2 border border-gray-100">
-                      <p className="text-xs text-gray-400">{label}</p>
-                      <p className={`text-lg font-bold ${label === "Left" && Number(val) <= 2 ? "text-orange-600" : "text-[#2A255D]"}`}>{val}</p>
+                {editingPkg === pkg.id ? (
+                  <div className="mt-1 space-y-3">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Sessions Total</label>
+                        <input type="number" min={0} value={pkgEditForm.sessions_total}
+                          onChange={(e) => setPkgEditForm((f) => ({ ...f, sessions_total: parseInt(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Sessions Remaining</label>
+                        <input type="number" min={0} value={pkgEditForm.sessions_remaining}
+                          onChange={(e) => setPkgEditForm((f) => ({ ...f, sessions_remaining: parseInt(e.target.value) || 0 }))}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Sessions Used (auto)</label>
+                        <div className="px-3 py-2 rounded-lg border border-gray-100 bg-gray-100 text-sm text-gray-400">
+                          {Math.max(0, pkgEditForm.sessions_total - pkgEditForm.sessions_remaining)}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Price Paid ($)</label>
+                        <input type="number" min={0} step={0.01} placeholder="0.00" value={pkgEditForm.price_paid}
+                          onChange={(e) => setPkgEditForm((f) => ({ ...f, price_paid: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Duration</label>
+                        <select value={pkgEditForm.duration_minutes}
+                          onChange={(e) => setPkgEditForm((f) => ({ ...f, duration_minutes: parseInt(e.target.value) }))}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition">
+                          <option value={30}>30 min</option>
+                          <option value={45}>45 min</option>
+                          <option value={60}>60 min</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-500 mb-1">Start Date</label>
+                        <input type="date" value={pkgEditForm.purchase_date}
+                          onChange={(e) => setPkgEditForm((f) => ({ ...f, purchase_date: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition" />
+                      </div>
+                      <div className="col-span-2">
+                        <div className="flex items-center mb-1.5">
+                          <label className="text-[11px] font-medium text-gray-500">Expiry Date</label>
+                          <label className="flex items-center gap-1.5 ml-auto cursor-pointer select-none">
+                            <input type="checkbox" checked={pkgEditForm.expiration_waived}
+                              onChange={(e) => setPkgEditForm((f) => ({ ...f, expiration_waived: e.target.checked }))}
+                              className="rounded border-gray-300" />
+                            <span className="text-[11px] text-gray-500">No expiry</span>
+                          </label>
+                        </div>
+                        {!pkgEditForm.expiration_waived && (
+                          <input type="date" value={pkgEditForm.expiration_date}
+                            onChange={(e) => setPkgEditForm((f) => ({ ...f, expiration_date: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] focus:outline-none focus:ring-2 focus:ring-[#06A29E]/40 focus:border-[#06A29E] transition" />
+                        )}
+                      </div>
                     </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <div>
-                    <span className="text-gray-400">Purchased:</span> {formatDate(pkg.purchase_date)}
-                    <span className="mx-2 text-gray-200">·</span>
-                    <span className="text-gray-400">Expires:</span>{" "}
-                    {pkg.expiration_waived ? <span className="text-emerald-600 font-medium">Waived</span> : formatDate(pkg.expiration_date)}
+                    <div className="flex gap-2 pt-1 border-t border-gray-100">
+                      <button onClick={handlePkgEditSave} disabled={pkgEditSaving}
+                        className="flex-1 py-2 rounded-lg bg-[#2A255D] text-white text-xs font-semibold hover:bg-[#1e1a47] disabled:opacity-50 transition">
+                        {pkgEditSaving ? "Saving…" : "Save Changes"}
+                      </button>
+                      <button onClick={() => setEditingPkg(null)} disabled={pkgEditSaving}
+                        className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-500 hover:bg-gray-50 transition">
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => toggleExpirationWaived(pkg)}
-                    disabled={toggling === pkg.id}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition ${pkg.expiration_waived ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "border-gray-200 text-gray-500 hover:bg-gray-100"}`}
-                  >
-                    {toggling === pkg.id ? "…" : pkg.expiration_waived ? "Restore Expiry" : "Waive Expiry"}
-                  </button>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      {[["Total", pkg.sessions_total], ["Used", pkg.sessions_used], ["Left", pkg.sessions_remaining]].map(([label, val]) => (
+                        <div key={label} className="text-center bg-white rounded-lg p-2 border border-gray-100">
+                          <p className="text-xs text-gray-400">{label}</p>
+                          <p className={`text-lg font-bold ${label === "Left" && Number(val) <= 2 ? "text-orange-600" : "text-[#2A255D]"}`}>{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div>
+                        <span className="text-gray-400">Purchased:</span> {formatDate(pkg.purchase_date)}
+                        <span className="mx-2 text-gray-200">·</span>
+                        <span className="text-gray-400">Expires:</span>{" "}
+                        {pkg.expiration_waived ? <span className="text-emerald-600 font-medium">Waived</span> : formatDate(pkg.expiration_date)}
+                      </div>
+                      <button
+                        onClick={() => toggleExpirationWaived(pkg)}
+                        disabled={toggling === pkg.id}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition ${pkg.expiration_waived ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "border-gray-200 text-gray-500 hover:bg-gray-100"}`}
+                      >
+                        {toggling === pkg.id ? "…" : pkg.expiration_waived ? "Restore Expiry" : "Waive Expiry"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
 

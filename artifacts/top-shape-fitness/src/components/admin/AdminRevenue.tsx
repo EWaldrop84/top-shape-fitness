@@ -101,8 +101,8 @@ export default function AdminRevenue() {
       supabase
         .from("client_packages")
         .select(`id, is_active, sessions_total, sessions_used, sessions_remaining,
-                 purchase_date, expiration_date, expiration_waived,
-                 packages!package_id(name, price_cents),
+                 purchase_date, expiration_date, expiration_waived, price_paid_cents,
+                 packages!package_id(name),
                  clients!owner_client_id(users!clients_user_id_fkey(first_name, last_name, phone))`)
         .order("sessions_remaining", { ascending: true }),
       supabase
@@ -136,7 +136,7 @@ export default function AdminRevenue() {
         expiration_date: r.expiration_date,
         expiration_waived: r.expiration_waived ?? false,
         packageName: r.packages?.name ?? "Unknown Package",
-        priceCents: r.packages?.price_cents ?? 0,
+        priceCents: r.price_paid_cents ?? 0,
         clientName: [u.first_name, u.last_name].filter(Boolean).join(" ") || "Unknown",
         clientPhone: u.phone ?? "",
       };

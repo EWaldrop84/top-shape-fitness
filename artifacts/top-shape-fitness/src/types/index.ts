@@ -32,6 +32,8 @@ export interface ClientPackage {
   is_active: boolean;
   is_shared: boolean;
   shared_with_client_id: string | null;
+  price_paid_cents?: number | null;
+  duration_minutes?: number | null;
   packages?: Package;
 }
 
