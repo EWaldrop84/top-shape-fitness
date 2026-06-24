@@ -78,6 +78,8 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
   const [viewAppt, setViewAppt] = useState<TrainerAppointment | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [pkgBalance, setPkgBalance] = useState<{ sessions_remaining: number; sessions_total: number; sessions_used: number } | null>(null);
+  const [pkgLoading, setPkgLoading] = useState(false);
 
   const isViewingOwn = viewingTrainerId === trainerId;
   const viewingTrainer = allTrainers.find(t => t.id === viewingTrainerId);
@@ -160,6 +162,33 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
   async function handleDeleteAvailability(id: string) {
     await supabase.from("availability").update({ is_active: false }).eq("id", id);
     fetchData();
+  }
+
+  async function fetchPkgBalance(clientId: string) {
+    setPkgLoading(true);
+    setPkgBalance(null);
+    const { data: owned } = await supabase
+      .from("client_packages")
+      .select("sessions_remaining, sessions_total, sessions_used")
+      .eq("owner_client_id", clientId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (owned) { setPkgBalance(owned); setPkgLoading(false); return; }
+    const { data: share } = await supabase
+      .from("client_package_shares")
+      .select("client_package_id")
+      .eq("shared_client_id", clientId)
+      .maybeSingle();
+    if (share?.client_package_id) {
+      const { data: master } = await supabase
+        .from("client_packages")
+        .select("sessions_remaining, sessions_total, sessions_used")
+        .eq("id", share.client_package_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      setPkgBalance(master ?? null);
+    }
+    setPkgLoading(false);
   }
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -295,7 +324,7 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
                     return (
                       <div
                         key={appt.id}
-                        onClick={() => { if (isViewingOwn) { setViewAppt(appt); setDeleteConfirm(false); setDeleteLoading(false); } }}
+                        onClick={() => { if (isViewingOwn) { setViewAppt(appt); setDeleteConfirm(false); setDeleteLoading(false); fetchPkgBalance(appt.client_id); } }}
                         className={`bg-white rounded-xl border border-gray-100 border-l-4 px-4 py-3 shadow-sm transition ${
                           !isViewingOwn ? "opacity-50 cursor-default" : "cursor-pointer hover:shadow-md"
                         }`}
@@ -399,7 +428,23 @@ export default function TrainerSchedule({ trainerId, allTrainers }: TrainerSched
             </div>
             <div className="px-5 py-4 space-y-3">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-gray-400 mb-0.5">Client</p><p className="font-semibold text-[#2A255D]">{clientNameMap.get(viewAppt.client_id) ?? "—"}</p></div>
+                <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Client</p>
+                    <p className="font-semibold text-[#2A255D] mb-1.5">{clientNameMap.get(viewAppt.client_id) ?? "—"}</p>
+                    {pkgLoading ? (
+                      <span className="text-[11px] text-gray-400">Loading…</span>
+                    ) : pkgBalance === null || pkgBalance.sessions_remaining === 0 ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700">No active package</span>
+                    ) : (
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                        pkgBalance.sessions_remaining > 5 ? "bg-emerald-100 text-emerald-700" :
+                        pkgBalance.sessions_remaining >= 3 ? "bg-amber-100 text-amber-700" :
+                        "bg-red-100 text-red-700"
+                      }`}>
+                        {pkgBalance.sessions_remaining} session{pkgBalance.sessions_remaining !== 1 ? "s" : ""} left
+                      </span>
+                    )}
+                  </div>
                 <div><p className="text-xs text-gray-400 mb-0.5">Status</p>
                   <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).bg} ${(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).text}`}>
                     {(STATUS_STYLE[viewAppt.status] ?? STATUS_STYLE.scheduled).label}
