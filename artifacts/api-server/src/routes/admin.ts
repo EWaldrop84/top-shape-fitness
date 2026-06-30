@@ -530,4 +530,187 @@ adminRouter.post("/admin/backfill-recurring", async (req: Request, res: Response
   res.json({ seriesCreated, occurrencesCreated });
 });
 
+// ── POST /api/admin/sync-calendar ───────────────────────────────────────────
+// Pulls each trainer's Google Calendar (52 weeks forward), matches events to
+// clients by name, and inserts missing appointments. Never touches client_packages.
+//
+// Requires: GOOGLE_CALENDAR_API_KEY env var
+// Trainer calendar IDs default to each trainer's user email (Google Calendar
+// default). Each trainer's calendar must be shared publicly or with the API key's
+// service account to be readable.
+adminRouter.post("/admin/sync-calendar", async (req: Request, res: Response) => {
+  const token = req.headers.authorization?.slice(7);
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  if (!token || !key || !url) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const verifyRes = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: key, Authorization: `Bearer ${token}` },
+  });
+  if (!verifyRes.ok) { res.status(401).json({ error: "Invalid session." }); return; }
+  const caller = (await verifyRes.json()) as { id: string };
+
+  const hdrs = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+
+  const userRes = await fetch(`${url}/rest/v1/users?id=eq.${caller.id}&select=role&limit=1`, { headers: hdrs });
+  const [callerUser] = (await userRes.json()) as { role: string }[];
+  if (!callerUser || callerUser.role !== "admin") { res.status(403).json({ error: "Admin access required." }); return; }
+
+  const gcalApiKey = process.env.GOOGLE_CALENDAR_API_KEY;
+  if (!gcalApiKey) {
+    res.status(501).json({
+      error:
+        "Google Calendar API key not configured. Add GOOGLE_CALENDAR_API_KEY to Replit Secrets, " +
+        "then make each trainer's Google Calendar publicly accessible (Settings → Share → Make available to public).",
+    });
+    return;
+  }
+
+  // Fetch active trainers with their email (used as calendar ID)
+  const trainersRes = await fetch(
+    `${url}/rest/v1/trainers?is_active=eq.true&select=id,user_id,users!user_id(email,first_name,last_name)`,
+    { headers: hdrs },
+  );
+  const trainers = (await trainersRes.json()) as {
+    id: string;
+    user_id: string;
+    users: { email: string; first_name: string | null; last_name: string | null };
+  }[];
+
+  if (!Array.isArray(trainers) || trainers.length === 0) {
+    res.json({ found: 0, inserted: 0, skipped: 0, message: "No active trainers found." });
+    return;
+  }
+
+  // Fetch all clients with names for title matching
+  const clientsRes = await fetch(
+    `${url}/rest/v1/clients?select=id,users!user_id(first_name,last_name)`,
+    { headers: hdrs },
+  );
+  const clients = (await clientsRes.json()) as {
+    id: string;
+    users: { first_name: string | null; last_name: string | null };
+  }[];
+
+  // Build name → client_id lookup (keys: "first", "last", "first last", "last first")
+  const clientNameMap = new Map<string, string>();
+  for (const c of clients) {
+    const fn = (c.users?.first_name ?? "").toLowerCase().trim();
+    const ln = (c.users?.last_name ?? "").toLowerCase().trim();
+    if (fn) clientNameMap.set(fn, c.id);
+    if (ln) clientNameMap.set(ln, c.id);
+    if (fn && ln) clientNameMap.set(`${fn} ${ln}`, c.id);
+    if (fn && ln) clientNameMap.set(`${ln} ${fn}`, c.id);
+  }
+
+  // Date range: today → +52 weeks
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const timeMin = today.toISOString();
+  const timeMax = new Date(today.getTime() + 52 * 7 * 24 * 60 * 60 * 1000).toISOString();
+  const todayStr = today.toISOString().split("T")[0]!;
+
+  // Fetch existing appointments for dedup
+  const existingRes = await fetch(
+    `${url}/rest/v1/appointments?appointment_date=gte.${todayStr}&select=trainer_id,client_id,appointment_date,start_time`,
+    { headers: hdrs },
+  );
+  const existingAppts = (await existingRes.json()) as {
+    trainer_id: string; client_id: string; appointment_date: string; start_time: string;
+  }[];
+  const existingSet = new Set(existingAppts.map((a) => `${a.trainer_id}|${a.client_id}|${a.appointment_date}|${a.start_time}`));
+
+  // Keywords that mark block-time / non-client events
+  const BLOCK_KEYWORDS = ["block", "hold", "break", "admin", "travel", "lunch", "available", "busy", "personal", "pto", "vacation", "off", "prep", "meeting"];
+
+  let found = 0;
+  let skipped = 0;
+  const toInsert: Record<string, unknown>[] = [];
+
+  for (const trainer of trainers) {
+    const calendarId = encodeURIComponent(trainer.users.email);
+    const gcalUrl =
+      `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events` +
+      `?key=${gcalApiKey}` +
+      `&timeMin=${encodeURIComponent(timeMin)}` +
+      `&timeMax=${encodeURIComponent(timeMax)}` +
+      `&singleEvents=true&maxResults=2500&orderBy=startTime`;
+
+    let events: Record<string, unknown>[] = [];
+    try {
+      const gcalRes = await fetch(gcalUrl);
+      if (!gcalRes.ok) { skipped++; continue; }
+      const gcalData = (await gcalRes.json()) as { items?: Record<string, unknown>[] };
+      events = gcalData.items ?? [];
+    } catch {
+      continue;
+    }
+
+    for (const event of events) {
+      // Skip all-day events (no dateTime)
+      const startDT = (event["start"] as Record<string, string> | undefined)?.["dateTime"];
+      const endDT = (event["end"] as Record<string, string> | undefined)?.["dateTime"];
+      if (!startDT || !endDT) { skipped++; continue; }
+
+      found++;
+
+      const apptDate = startDT.split("T")[0]!;
+      const startTime = startDT.split("T")[1]!.substring(0, 5);
+      const endTime = endDT.split("T")[1]!.substring(0, 5);
+      const durationMinutes = Math.round((new Date(endDT).getTime() - new Date(startDT).getTime()) / 60000);
+      const title = ((event["summary"] as string | undefined) ?? "").toLowerCase().trim();
+
+      // Skip block-time events
+      if (BLOCK_KEYWORDS.some((kw) => title.includes(kw))) { skipped++; continue; }
+
+      // Match event title against client names (word overlap scoring)
+      const titleWords = title.split(/[\s,+&\/\-]+/).filter((w) => w.length > 1);
+      let bestClientId: string | null = null;
+      let bestScore = 0;
+
+      for (const [name, cid] of clientNameMap.entries()) {
+        const nameParts = name.split(" ");
+        const score = nameParts.filter((np) => titleWords.includes(np)).length;
+        if (score > bestScore) { bestScore = score; bestClientId = cid; }
+      }
+
+      if (!bestClientId || bestScore === 0) { skipped++; continue; }
+
+      // Dedup check
+      const dupKey = `${trainer.id}|${bestClientId}|${apptDate}|${startTime}`;
+      if (existingSet.has(dupKey)) { skipped++; continue; }
+      existingSet.add(dupKey);
+
+      toInsert.push({
+        trainer_id: trainer.id,
+        client_id: bestClientId,
+        appointment_date: apptDate,
+        start_time: startTime,
+        end_time: endTime,
+        duration_minutes: durationMinutes,
+        status: "scheduled",
+        session_type: "training",
+        session_deducted: false,
+        is_recurring: false,
+        notes: (event["summary"] as string | null) ?? null,
+      });
+    }
+  }
+
+  // Batch insert (100 per request)
+  let inserted = 0;
+  for (let i = 0; i < toInsert.length; i += 100) {
+    const batch = toInsert.slice(i, i + 100);
+    const insertRes = await fetch(`${url}/rest/v1/appointments`, {
+      method: "POST",
+      headers: { ...hdrs, Prefer: "return=minimal" },
+      body: JSON.stringify(batch),
+    });
+    if (insertRes.ok) inserted += batch.length;
+    else skipped += batch.length;
+  }
+
+  res.json({ found, inserted, skipped });
+});
+
 export default adminRouter;
