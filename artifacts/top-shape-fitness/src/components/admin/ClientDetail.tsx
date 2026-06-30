@@ -832,7 +832,66 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
         </div>
 
         {sortedPkgs.length === 0 && !sharedPkg ? (
-          <p className="text-sm text-gray-400 text-center py-4">No packages assigned yet.</p>
+          <div>
+            <p className="text-sm text-gray-400 text-center py-4">No packages assigned yet.</p>
+            {!showLinkShared ? (
+              <button
+                onClick={() => { setShowLinkShared(true); loadOwners(); }}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-lg border border-dashed border-[#1F73B1]/40 text-[#1F73B1] text-xs font-semibold hover:bg-[#1F73B1]/5 transition"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
+                </svg>
+                Link to Shared Package
+              </button>
+            ) : (
+              <div className="rounded-xl border border-[#1F73B1]/20 bg-[#1F73B1]/5 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-[#1F73B1]">Link to Shared Package</p>
+                  <button
+                    onClick={() => { setShowLinkShared(false); setLinkSearch(""); }}
+                    className="p-1 text-gray-400 hover:text-gray-600 transition"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                  </button>
+                </div>
+                <div className="relative mb-2">
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    autoFocus
+                    type="search"
+                    placeholder="Search by owner name or package…"
+                    value={linkSearch}
+                    onChange={(e) => setLinkSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 rounded-lg border border-[#1F73B1]/20 bg-white text-sm text-[#2A255D] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#1F73B1]/30 focus:border-[#1F73B1] transition"
+                  />
+                </div>
+                <div className="rounded-lg border border-gray-100 bg-white overflow-hidden max-h-48 overflow-y-auto">
+                  {(() => {
+                    const q = linkSearch.toLowerCase();
+                    const filtered = allOwners.filter(
+                      (o) => o.ownerName.toLowerCase().includes(q) || o.packageName.toLowerCase().includes(q),
+                    );
+                    if (!ownersLoaded) return <p className="px-3 py-2.5 text-sm text-gray-400">Loading…</p>;
+                    if (filtered.length === 0) return <p className="px-3 py-2.5 text-sm text-gray-400">No active packages found</p>;
+                    return filtered.map((o) => (
+                      <button
+                        key={o.clientPackageId}
+                        onClick={() => { handleLinkShared(o.clientPackageId); setShowLinkShared(false); setLinkSearch(""); }}
+                        className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition border-b border-gray-50 last:border-0"
+                      >
+                        <p className="text-sm font-medium text-[#2A255D]">{o.ownerName}</p>
+                        <p className="text-[11px] text-gray-400">{o.packageName} · {o.sessionsRemaining} sessions left</p>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {sortedPkgs.map((pkg) => (
@@ -967,6 +1026,107 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
                         {toggling === pkg.id ? "…" : pkg.expiration_waived ? "Restore Expiry" : "Waive Expiry"}
                       </button>
                     </div>
+                    {/* ── Sharing controls ─────────────────────────────── */}
+                    {pkg.is_active && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
+                            Shared with ({packageShares.filter((s) => s.client_package_id === pkg.id).length})
+                          </p>
+                          <button
+                            onClick={() => {
+                              if (showAddShare === pkg.id) {
+                                setShowAddShare(null);
+                                setShareSearch("");
+                              } else {
+                                setShowAddShare(pkg.id);
+                                setShareSearch("");
+                                loadAllClients();
+                              }
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#2A255D]/5 text-[11px] font-semibold text-[#2A255D] hover:bg-[#2A255D]/10 transition"
+                          >
+                            {showAddShare === pkg.id ? (
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            ) : (
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                            )}
+                            {showAddShare === pkg.id ? "Cancel" : "Add"}
+                          </button>
+                        </div>
+                        {sharesLoading ? (
+                          <p className="text-[11px] text-gray-400 py-1">Loading…</p>
+                        ) : packageShares.filter((s) => s.client_package_id === pkg.id).length === 0 && showAddShare !== pkg.id ? (
+                          <p className="text-[11px] text-gray-400 italic">No shared members</p>
+                        ) : (
+                          <div className="space-y-1 mb-2">
+                            {packageShares.filter((s) => s.client_package_id === pkg.id).map((share) => (
+                              <div key={share.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-[#1F73B1]/10 text-[#1F73B1] text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                    {(share.name[0] ?? "?").toUpperCase()}
+                                  </span>
+                                  <span className="text-sm text-[#2A255D] font-medium">{share.name}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleRemoveShare(share.id)}
+                                  disabled={removingShare === share.id}
+                                  className="text-[11px] font-medium text-red-500 hover:text-red-700 transition disabled:opacity-40"
+                                >
+                                  {removingShare === share.id ? "…" : "Remove"}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {showAddShare === pkg.id && (
+                          <div className="mt-1">
+                            <div className="relative">
+                              <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                              </svg>
+                              <input
+                                autoFocus
+                                type="search"
+                                placeholder="Search client by name…"
+                                value={shareSearch}
+                                onChange={(e) => setShareSearch(e.target.value)}
+                                className="w-full pl-8 pr-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-[#2A255D] placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#2A255D]/30 focus:border-[#2A255D] transition"
+                              />
+                            </div>
+                            {shareSearch.trim() && (
+                              <div className="mt-1 rounded-lg border border-gray-100 bg-white shadow-sm overflow-hidden max-h-40 overflow-y-auto">
+                                {(() => {
+                                  const filtered = allClients.filter(
+                                    (c) =>
+                                      c.name.toLowerCase().includes(shareSearch.toLowerCase()) &&
+                                      !packageShares.some((s) => s.shared_client_id === c.id),
+                                  );
+                                  return filtered.length === 0 ? (
+                                    <p className="px-3 py-2.5 text-sm text-gray-400">No clients found</p>
+                                  ) : (
+                                    filtered.slice(0, 8).map((c) => (
+                                      <button
+                                        key={c.id}
+                                        onClick={() => {
+                                          handleAddShare(pkg.id, c.id);
+                                          setShowAddShare(null);
+                                          setShareSearch("");
+                                        }}
+                                        disabled={addingShare}
+                                        className="w-full text-left px-3 py-2.5 text-sm text-[#2A255D] hover:bg-gray-50 transition border-b border-gray-50 last:border-0 disabled:opacity-50"
+                                      >
+                                        {c.name}
+                                      </button>
+                                    ))
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -988,9 +1148,18 @@ export default function ClientDetail({ clientId, onBack }: ClientDetailProps) {
                       </span>
                     </div>
                   </div>
-                  <span className={`flex-shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-full ${sharedPkg.is_active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>
-                    {sharedPkg.is_active ? "Active" : "Inactive"}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sharedPkg.is_active ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-400"}`}>
+                      {sharedPkg.is_active ? "Active" : "Inactive"}
+                    </span>
+                    <button
+                      onClick={handleRemoveOwnShare}
+                      disabled={removingOwnShare}
+                      className="text-[11px] font-medium text-red-500 hover:text-red-700 transition disabled:opacity-40"
+                    >
+                      {removingOwnShare ? "Removing…" : "Unlink"}
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {([["Total", sharedPkg.sessions_total], ["Used", sharedPkg.sessions_used], ["Left", sharedPkg.sessions_remaining]] as [string, number][]).map(([label, val]) => (
